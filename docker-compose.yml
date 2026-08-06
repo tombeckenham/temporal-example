@@ -1,0 +1,48 @@
+# Local Temporal for development.
+# UI: http://localhost:8233  ·  gRPC: localhost:7233
+#
+# Prefer the Temporal CLI if you have it:
+#   temporal server start-dev --db-filename .temporal/dev.db --ui-port 8233
+#
+# Or via Docker:
+#   docker compose up -d
+
+services:
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    depends_on:
+      - postgresql
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - '7233:7233'
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - '8233:8080'
+
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    ports:
+      - '5432:5432'
+    volumes:
+      - temporal-postgres:/var/lib/postgresql/data
+
+volumes:
+  temporal-postgres:

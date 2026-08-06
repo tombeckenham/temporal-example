@@ -11,7 +11,16 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true },
   plugins: [
     devtools(),
-    nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+    nitro({
+      rollupConfig: {
+        external: [
+          /^@sentry\//,
+          /^@temporalio\//,
+          /^@grpc\//,
+          'better-sqlite3',
+        ],
+      },
+    }),
     tailwindcss(),
     tanstackStart(),
     viteReact(),

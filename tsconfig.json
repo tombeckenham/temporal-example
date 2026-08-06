@@ -1,29 +1,62 @@
 {
-  "include": ["**/*.ts", "**/*.tsx", "eslint.config.js", "prettier.config.js", "vite.config.js"],
-  
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "eslint.config.js",
+    "prettier.config.js",
+    "vite.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".output", ".nitro", ".tanstack", ".temporal"],
   "compilerOptions": {
     "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["vite/client", "node"],
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"]
     },
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
 
-    /* Bundler mode */
-    "moduleResolution": "bundler",
+    /* Bundler / ESM */
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
     "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
 
-    /* Linting */
-    "skipLibCheck": true,
+    /* Maximum strictness */
     "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+
+    /* Extra safety (beyond strict) */
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Hygiene */
+    "skipLibCheck": true,
+    "noErrorTruncation": true,
+    "allowJs": false,
+    "checkJs": false
   }
 }

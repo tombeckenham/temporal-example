@@ -11,3 +11,7 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+.temporal
+dev.db
+dev.db-*
+.cursor
