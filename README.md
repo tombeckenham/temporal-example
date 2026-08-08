@@ -31,28 +31,27 @@ Add your key to `.env.local`:
 XAI_API_KEY=xai-...
 ```
 
-## Run (three processes)
+## Run
 
-**Terminal 1 — Temporal server**
+**One command** (Temporal server + worker + web app, Foreman-style logs):
 
 ```bash
-# Preferred (Temporal CLI)
-bun run temporal:dev
-
-# Or Docker
-bun run temporal:docker
+bun run dev:all
 ```
 
-**Terminal 2 — Worker** (executes workflows + activities)
+Same thing explicitly:
 
 ```bash
-bun run worker
+bun run --parallel temporal:dev worker dev
 ```
 
-**Terminal 3 — Web app**
+Or three terminals:
 
 ```bash
-bun --bun run dev
+bun run temporal:dev   # Temporal CLI (:7233, UI :8233)
+# or: bun run temporal:docker
+bun run worker         # workflows + activities
+bun --bun run dev      # web app :3000
 ```
 
 Open [http://localhost:3000](http://localhost:3000), submit a prompt, and watch phases: `enhancing` → `starting` → `generating` → `completed`.

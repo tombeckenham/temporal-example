@@ -28,15 +28,12 @@ Stack:
 ```bash
 bun install
 
-# 1. Temporal server (pick one)
-bun run temporal:dev          # Temporal CLI (preferred)
-# or
-docker compose up -d          # docker-compose.yml
+# All three processes (preferred)
+bun run dev:all               # bun run --parallel temporal:dev worker dev
 
-# 2. Worker (separate terminal) — executes workflows + activities
-bun run worker
-
-# 3. Web app
+# Or separately:
+bun run temporal:dev          # Temporal CLI (or: temporal:docker)
+bun run worker                # workflows + activities
 bun --bun run dev             # http://localhost:3000
 ```
 
