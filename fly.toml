@@ -10,7 +10,7 @@
 #   STATUS_WEBHOOK_URL        (https://your-worker.workers.dev)
 #   STATUS_WEBHOOK_SECRET
 
-app = "temporal-example-worker"
+app = "video-at-scale-worker"
 primary_region = "iad"
 
 [build]

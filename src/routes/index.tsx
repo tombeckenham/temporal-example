@@ -247,10 +247,10 @@ function Home() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium tracking-wide text-violet-400 uppercase">
-                Temporal + TanStack AI + Cloudflare
+                video-at-scale
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                AI video generation
+                AI video at scale
               </h1>
             </div>
             <div className="text-sm text-zinc-400">

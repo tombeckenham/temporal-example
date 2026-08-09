@@ -1,4 +1,4 @@
-# Temporal + TanStack AI + Cloudflare video
+# video-at-scale
 
 App that generates short AI videos from a text prompt:
 
@@ -84,7 +84,7 @@ bun run deploy
 **Worker (Node)** — Fly.io (`fly.toml`) or Docker:
 
 ```bash
-docker build -f Dockerfile.worker -t temporal-example-worker .
+docker build -f Dockerfile.worker -t video-at-scale-worker .
 # or: fly launch && fly secrets set ... && fly deploy
 ```
 

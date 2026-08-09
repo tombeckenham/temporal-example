@@ -3,7 +3,7 @@
 // Runtime types generated with workerd@1.20260801.1 2026-08-07 nodejs_compat
 interface __BaseEnv_Env {
 	VIDEOS: R2Bucket;
-	APP_NAME: "temporal-example";
+	APP_NAME: "video-at-scale";
 	TEMPORAL_STARTER_SECRET: string;
 	TEMPORAL_STARTER_URL: string;
 	STATUS_WEBHOOK_SECRET: string;

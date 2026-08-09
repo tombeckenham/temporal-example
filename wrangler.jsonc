@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "temporal-example",
+  "name": "video-at-scale",
   "compatibility_date": "2026-08-07",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
@@ -24,8 +24,8 @@
   "r2_buckets": [
     {
       "binding": "VIDEOS",
-      "bucket_name": "temporal-example-videos",
-      "preview_bucket_name": "temporal-example-videos-preview",
+      "bucket_name": "video-at-scale-videos",
+      "preview_bucket_name": "video-at-scale-videos-preview",
     },
   ],
   // Cloudflare Email Service (onboard a domain first). Use remote:true for real send in wrangler dev.
@@ -47,7 +47,7 @@
   //   STATUS_WEBHOOK_SECRET, TEMPORAL_STARTER_URL, TEMPORAL_STARTER_SECRET,
   //   EMAIL_FROM, EMAIL_MODE
   "vars": {
-    "APP_NAME": "temporal-example",
+    "APP_NAME": "video-at-scale",
     "EMAIL_MODE": "console",
   },
 }

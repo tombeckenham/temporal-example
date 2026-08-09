@@ -18,7 +18,7 @@ test.describe('video generation (AIMock)', () => {
     await page.waitForLoadState('networkidle')
 
     await expect(
-      page.getByRole('heading', { name: /AI video generation/i }),
+      page.getByRole('heading', { name: /AI video at scale/i }),
     ).toBeVisible()
 
     const prompt =

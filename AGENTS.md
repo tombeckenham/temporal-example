@@ -1,4 +1,4 @@
-# AGENTS.md — temporal-example
+# AGENTS.md — video-at-scale
 
 Guidance for coding agents working in this repo.
 

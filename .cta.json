@@ -1,5 +1,5 @@
 {
-  "projectName": "temporal-example",
+  "projectName": "video-at-scale",
   "mode": "file-router",
   "typescript": true,
   "packageManager": "bun",
