@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "temporal-example",
+      "name": "video-at-scale",
       "dependencies": {
         "@better-auth/drizzle-adapter": "^1.6.26",
         "@tailwindcss/vite": "^4.1.18",

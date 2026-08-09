@@ -4,7 +4,7 @@ Guidance for coding agents working in this repo.
 
 ## What this project is
 
-A **minimal AI video generation demo** that teaches **Temporal workflows** on **Cloudflare**:
+**video-at-scale** — AI video generation with durable Temporal workflows on **Cloudflare**:
 
 1. User submits a prompt in a TanStack Start UI (Workers)
 2. Edge starts a Temporal workflow via the **Node HTTP gateway** (not gRPC in-isolate)
