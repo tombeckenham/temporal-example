@@ -11,12 +11,9 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { LLMock } from '@copilotkit/aimock'
+import { E2E_PORTS, E2E_SECRETS } from './constants.ts'
 
-export const E2E_PORTS = {
-  aimock: 4010,
-  gateway: 8788,
-  app: 3000,
-} as const
+export { E2E_PORTS, E2E_SECRETS }
 
 const TEMPORAL_ADDRESS = process.env['TEMPORAL_ADDRESS'] ?? 'localhost:7233'
 
@@ -81,12 +78,6 @@ function spawnLogged(
   children.push(child)
   return child
 }
-
-/** Shared e2e secrets — must match worker process AND workerd `.dev.vars`. */
-export const E2E_SECRETS = {
-  TEMPORAL_STARTER_SECRET: 'dev-starter-secret-change-me',
-  STATUS_WEBHOOK_SECRET: 'dev-webhook-secret-change-me',
-} as const
 
 /**
  * Must match `.dev.vars` / `.env.local` so the edge Worker and worker process agree.
