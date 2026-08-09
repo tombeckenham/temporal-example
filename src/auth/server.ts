@@ -4,8 +4,8 @@ import { emailOTP } from 'better-auth/plugins'
 import { getDb } from '../db/index.ts'
 import { authSchema } from '../db/schema.ts'
 import { newId } from '../lib/id.ts'
-import { getEnv } from '../server/env.ts'
-import { perRequest } from '../server/requestScope.ts'
+import { getEnv } from '../lib/env.ts'
+import { perRequest } from '../lib/requestScope.ts'
 import { sendOtpEmail } from './email.ts'
 
 function authSecret(): string {

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { getEnv } from '../server/env.ts'
-import { perRequest } from '../server/requestScope.ts'
+import { getEnv } from '../lib/env.ts'
+import { perRequest } from '../lib/requestScope.ts'
 import * as schema from './schema.ts'
 
 /**

@@ -8,14 +8,14 @@
  */
 import handler from '@tanstack/react-start/server-entry'
 import { JobRoom } from './durable-objects/JobRoom.ts'
-import { authorizeJobAccess } from './server/jobAccess.ts'
-import { runInRequestScope } from './server/requestScope.ts'
+import { authorizeJobAccess } from './lib/jobAccess.ts'
+import { runInRequestScope } from './lib/requestScope.ts'
 import {
   handleJobEvents,
   handleJobStatusHttp,
   handleJobWebSocket,
-} from './server/jobEvents.ts'
-import { handleVideoGet, handleVideoPersist } from './server/videos.ts'
+} from './lib/jobEvents.ts'
+import { handleVideoGet, handleVideoPersist } from './lib/videos.ts'
 
 export { JobRoom }
 
@@ -82,7 +82,7 @@ const internalRoutes: Array<{
 /**
  * Vars and secrets reach server code through process.env (populated by
  * `nodejs_compat`) and object bindings through `cloudflare:workers` — see
- * server/cfEnv.ts. Nothing is copied into module scope here: state set during
+ * lib/cfEnv.ts. Nothing is copied into module scope here: state set during
  * one request is shared with every other request in the isolate.
  */
 async function handleRequest(

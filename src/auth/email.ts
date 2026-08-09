@@ -1,4 +1,4 @@
-import { getEnv } from '../server/env.ts'
+import { getEnv } from '../lib/env.ts'
 
 /**
  * Send OTP emails via the Cloudflare Email Service binding, or log the code

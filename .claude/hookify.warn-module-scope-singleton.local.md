@@ -17,9 +17,9 @@ an auth adapter holding a db client) is **unusable** from a later request:
 > Cannot perform I/O on behalf of a different request.
 
 This exact pattern (`let _db`, `let _auth`) caused a production sign-in failure
-where the *second* request in each isolate threw a DrizzleQueryError.
+where the _second_ request in each isolate threw a DrizzleQueryError.
 
-**Instead:** wrap the factory in `perRequest()` from `src/server/requestScope.ts`:
+**Instead:** wrap the factory in `perRequest()` from `src/lib/requestScope.ts`:
 
 ```ts
 export const getDb = perRequest(createClient)

@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authClient } from '../auth/client.ts'
-import { listMyJobsFn } from '../server/jobs.ts'
-import type { VideoJobRow } from '../server/jobs.ts'
-import { getSessionFn } from '../server/session.ts'
-import type { PublicSession } from '../server/session.ts'
-import { startVideoWorkflowFn } from '../server/video.ts'
+import { listMyJobsFn } from '../lib/jobs.ts'
+import type { VideoJobRow } from '../lib/jobs.ts'
+import { getSessionFn } from '../lib/session.ts'
+import type { PublicSession } from '../lib/session.ts'
+import { startVideoWorkflowFn } from '../lib/video.ts'
 import type {
   GenerateVideoInput,
   VideoPhase,

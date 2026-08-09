@@ -120,7 +120,7 @@ src/
   server.ts               # CF Worker entry (WS + webhooks + TanStack)
   durable-objects/
     JobRoom.ts            # Per-workflow status + WS hibernation (+ AI run storage)
-  server/
+  lib/
     video.ts              # createServerFn: start via Temporal gateway
     jobs.ts               # listMyJobsFn + scoped job reads
     jobSync.ts            # unscoped job writes for internal webhook
@@ -185,7 +185,7 @@ Task queue: `video-generation` (`TASK_QUEUE` in `types.ts`).
 Steps: validate · auth middleware · optional Postgres index row · gateway start · surface errors.
 
 ```typescript
-// src/server/video.ts (shape)
+// src/lib/video.ts (shape)
 export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .validator(generateVideoInputSchema)
@@ -218,7 +218,9 @@ export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
 import type * as activities from '../activities/index.ts'
 
 const { enhancePrompt, startVideoJob, pollVideoJob, persistVideo } =
-  proxyActivities<typeof activities>({ startToCloseTimeout: '5 minutes', /* … */ })
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes' /* … */,
+  })
 
 const { publishStatus } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 seconds',
@@ -310,11 +312,11 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
   heavy client-side library, and in tests that need mock ordering.
 - Dynamic import is **not** the tool for keeping server code out of the client
   bundle — module boundaries are. A module that a route component imports must
-  export *only* server functions and types: TanStack Start compiles away
+  export _only_ server functions and types: TanStack Start compiles away
   `.handler()` bodies, but a plain exported function keeps its imports in the
   client graph and drags Postgres/Better Auth into the browser bundle. That is
-  why `syncVideoJobFromStatus` lives in `server/jobSync.ts` rather than
-  alongside `listMyJobsFn` in `server/jobs.ts`.
+  why `syncVideoJobFromStatus` lives in `lib/jobSync.ts` rather than
+  alongside `listMyJobsFn` in `lib/jobs.ts`.
 - Guard rail: `dist/client` must stay free of `drizzle`, `postgres` and
   server-side `better-auth` after `bun run build` (~400K).
 
@@ -323,14 +325,14 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 - **Never cache anything that owns I/O in module scope.** Workers rejects use
   of a socket or stream created by one request from another request's handler
   ("Cannot perform I/O on behalf of a different request"), so a module-level
-  Postgres client fails on the *second* request in an isolate.
+  Postgres client fails on the _second_ request in an isolate.
 - `getDb()` and `getAuth()` are wrapped in `perRequest()`
-  (`server/requestScope.ts`); the Workers entry opens the scope once per
+  (`lib/requestScope.ts`); the Workers entry opens the scope once per
   request with `runInRequestScope()`.
 - Better Auth cannot be a module singleton here: its Drizzle adapter captures
   the client it is constructed with.
-- Env: read `getEnv()` from `server/env.ts` — the Workers env carries vars,
-  secrets *and* object bindings (`EMAIL`, `HYPERDRIVE`), so it is a superset of
+- Env: read `getEnv()` from `lib/env.ts` — the Workers env carries vars,
+  secrets _and_ object bindings (`EMAIL`, `HYPERDRIVE`), so it is a superset of
   `process.env`. Never copy it into a module-level variable. The Node Temporal
   worker is a separate process and reads `process.env` directly.
 
@@ -356,33 +358,33 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 
 ## Common pitfalls
 
-| Trap | Symptom | Fix |
-| ---- | ------- | --- |
-| Worker not running | Temporal execution **Running**, UI stuck | `bun run worker` (or `dev:all`) |
-| Temporal server down | Gateway cannot connect to `:7233` | `bun run temporal:dev` |
-| Gateway secret mismatch | Edge start returns **401** | Align `TEMPORAL_STARTER_SECRET` on edge + worker |
-| Wrong / unset `STATUS_WEBHOOK_URL` | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000`) |
-| HMAC secret mismatch | `/internal/job-events` **401** | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd |
-| Value-import activities in workflow | Bundle / replay breakage | `import type` only from activities |
-| Long sleep inside an activity | Worker slots stuck / timeouts | `sleep` in the **workflow**; short activities |
-| Workflow imports Node-only modules | Worker bundle fails or non-determinism | Keep I/O in activities; workflow-safe types only |
-| Live job status only in Postgres | Stale UI / write hotspot | JobRoom DO + WS; Postgres is secondary index |
-| Provider video URL in UI long-term | Broken playback later | Persist via R2 (`persistVideo` path) |
-| `XAI_API_KEY` in client | Secret leak | Node activities only |
-| Module-level DB/auth client on Workers | Second request I/O errors | `perRequest` + `runInRequestScope` |
-| Hand-written `userId` filters in handlers | Authz bugs / drift | `context.scopedDb.*` only |
-| Server helpers co-exported with server fns | Postgres/auth in client bundle | Split modules (`jobSync.ts` vs `jobs.ts`) |
+| Trap                                       | Symptom                                              | Fix                                                      |
+| ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------- |
+| Worker not running                         | Temporal execution **Running**, UI stuck             | `bun run worker` (or `dev:all`)                          |
+| Temporal server down                       | Gateway cannot connect to `:7233`                    | `bun run temporal:dev`                                   |
+| Gateway secret mismatch                    | Edge start returns **401**                           | Align `TEMPORAL_STARTER_SECRET` on edge + worker         |
+| Wrong / unset `STATUS_WEBHOOK_URL`         | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000`) |
+| HMAC secret mismatch                       | `/internal/job-events` **401**                       | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd        |
+| Value-import activities in workflow        | Bundle / replay breakage                             | `import type` only from activities                       |
+| Long sleep inside an activity              | Worker slots stuck / timeouts                        | `sleep` in the **workflow**; short activities            |
+| Workflow imports Node-only modules         | Worker bundle fails or non-determinism               | Keep I/O in activities; workflow-safe types only         |
+| Live job status only in Postgres           | Stale UI / write hotspot                             | JobRoom DO + WS; Postgres is secondary index             |
+| Provider video URL in UI long-term         | Broken playback later                                | Persist via R2 (`persistVideo` path)                     |
+| `XAI_API_KEY` in client                    | Secret leak                                          | Node activities only                                     |
+| Module-level DB/auth client on Workers     | Second request I/O errors                            | `perRequest` + `runInRequestScope`                       |
+| Hand-written `userId` filters in handlers  | Authz bugs / drift                                   | `context.scopedDb.*` only                                |
+| Server helpers co-exported with server fns | Postgres/auth in client bundle                       | Split modules (`jobSync.ts` vs `jobs.ts`)                |
 
 ## Where to look
 
-| Concern | Path |
-| ------- | ---- |
-| Workflow orchestration | `src/temporal/workflows/generateVideoWorkflow.ts` |
-| Activities (AI + publish) | `src/temporal/activities/` |
-| Start API | `src/server/video.ts` |
-| JobRoom DO | `src/durable-objects/JobRoom.ts` |
-| CF Worker entry | `src/server.ts` |
+| Concern                   | Path                                                |
+| ------------------------- | --------------------------------------------------- |
+| Workflow orchestration    | `src/temporal/workflows/generateVideoWorkflow.ts`   |
+| Activities (AI + publish) | `src/temporal/activities/`                          |
+| Start API                 | `src/lib/video.ts`                                  |
+| JobRoom DO                | `src/durable-objects/JobRoom.ts`                    |
+| CF Worker entry           | `src/server.ts`                                     |
 | Temporal worker + gateway | `src/temporal/worker.ts`, `src/temporal/gateway.ts` |
-| UI | `src/routes/index.tsx` |
-| E2E | `e2e/video-generation.spec.ts` |
-| Temporal UI (local) | http://localhost:8233 |
+| UI                        | `src/routes/index.tsx`                              |
+| E2E                       | `e2e/video-generation.spec.ts`                      |
+| Temporal UI (local)       | http://localhost:8233                               |
