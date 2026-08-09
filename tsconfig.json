@@ -3,6 +3,7 @@
     "**/*.ts",
     "**/*.tsx",
     "worker-configuration.d.ts",
+    "src/env.d.ts",
     "eslint.config.js",
     "prettier.config.js",
     "vite.config.ts"

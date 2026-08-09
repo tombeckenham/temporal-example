@@ -28,11 +28,18 @@
       "preview_bucket_name": "temporal-example-videos-preview",
     },
   ],
-  // Secrets (set via `wrangler secret put`):
-  //   STATUS_WEBHOOK_SECRET  — HMAC for Temporal → edge job events
-  //   TEMPORAL_STARTER_URL   — Node gateway base URL (e.g. https://worker.example.com)
-  //   TEMPORAL_STARTER_SECRET — shared secret for start/status gateway
+  // Cloudflare Email Service (onboard a domain first). Use remote:true for real send in wrangler dev.
+  "send_email": [
+    {
+      "name": "EMAIL",
+    },
+  ],
+  // Secrets (wrangler secret put):
+  //   DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL,
+  //   STATUS_WEBHOOK_SECRET, TEMPORAL_STARTER_URL, TEMPORAL_STARTER_SECRET,
+  //   EMAIL_FROM, EMAIL_MODE
   "vars": {
     "APP_NAME": "temporal-example",
+    "EMAIL_MODE": "console",
   },
 }

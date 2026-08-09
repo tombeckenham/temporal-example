@@ -21,10 +21,14 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
   },
   webServer: {
-    // Bind dual-stack so 127.0.0.1 and ::1 both work
     command: `bunx vite dev --host 127.0.0.1 --port ${E2E_PORTS.app} --strictPort`,
     url: `http://127.0.0.1:${E2E_PORTS.app}`,
     reuseExistingServer: false,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      E2E_BYPASS_AUTH: '1',
+      EMAIL_MODE: 'console',
+    },
   },
 })

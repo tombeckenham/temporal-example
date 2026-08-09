@@ -1,5 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { authClient } from '../auth/client.ts'
+import { getSession, type PublicSession } from '../server/session.ts'
 import { startVideoWorkflow } from '../server/video.ts'
 import type {
   GenerateVideoInput,
@@ -8,7 +10,23 @@ import type {
   VideoWorkflowStatus,
 } from '../temporal/types.ts'
 
-export const Route = createFileRoute('/')({ component: Home })
+export const Route = createFileRoute('/')({
+  component: Home,
+  loader: async () => {
+    if (process.env['E2E_BYPASS_AUTH'] === '1') {
+      return {
+        session: {
+          user: {
+            id: 'e2e-user',
+            email: 'e2e@example.com',
+            name: 'E2E User',
+          },
+        } satisfies PublicSession,
+      }
+    }
+    return { session: await getSession() }
+  },
+})
 
 const PHASES: VideoPhase[] = [
   'enhancing',
@@ -34,6 +52,9 @@ function jobWebSocketUrl(workflowId: string): string {
 }
 
 function Home() {
+  const { session: initialSession } = Route.useLoaderData()
+  const [session, setSession] = useState<PublicSession>(initialSession)
+
   const [prompt, setPrompt] = useState(
     'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
   )
@@ -49,6 +70,8 @@ function Home() {
     'idle',
   )
   const wsRef = useRef<WebSocket | null>(null)
+
+  const signedIn = !!session?.user
 
   const isRunning =
     !!workflowId &&
@@ -154,6 +177,10 @@ function Home() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!signedIn) {
+      setError('Sign in required')
+      return
+    }
     setError(null)
     setStatus(null)
     setWorkflowId(null)
@@ -180,6 +207,11 @@ function Home() {
     }
   }
 
+  async function signOut() {
+    await authClient.signOut()
+    setSession(null)
+  }
+
   function reset() {
     wsRef.current?.close()
     setWorkflowId(null)
@@ -192,21 +224,54 @@ function Home() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-3xl px-6 py-12">
         <header className="mb-10">
-          <p className="text-sm font-medium tracking-wide text-violet-400 uppercase">
-            Temporal + TanStack AI + Cloudflare
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            AI video generation
-          </h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium tracking-wide text-violet-400 uppercase">
+                Temporal + TanStack AI + Cloudflare
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+                AI video generation
+              </h1>
+            </div>
+            <div className="text-sm text-zinc-400">
+              {signedIn && session ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-zinc-300">{session.user.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => void signOut()}
+                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/login"
+                  className="rounded-lg bg-violet-600 px-3 py-1.5 font-medium text-white hover:bg-violet-500"
+                >
+                  Sign in
+                </Link>
+              )}
+            </div>
+          </div>
           <p className="mt-3 max-w-2xl text-zinc-400">
             Submit a prompt → Temporal workflow enhances it with Grok text,
             starts a Grok Imagine video job, then durably polls until the clip
             is ready. Live progress is pushed over a{' '}
             <strong className="font-medium text-zinc-300">
               Durable Object WebSocket
-            </strong>{' '}
-            (one JobRoom per workflow — not a global poll hub).
+            </strong>
+            . Completed clips are stored in R2.
           </p>
+          {!signedIn && (
+            <p className="mt-3 text-sm text-amber-200/90">
+              <Link to="/login" className="underline">
+                Sign in with email OTP
+              </Link>{' '}
+              to generate videos.
+            </p>
+          )}
         </header>
 
         <form
@@ -276,7 +341,9 @@ function Home() {
           <div className="flex flex-wrap gap-3 pt-1">
             <button
               type="submit"
-              disabled={isStarting || isRunning || !prompt.trim()}
+              disabled={
+                !signedIn || isStarting || isRunning || !prompt.trim()
+              }
               className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isStarting
@@ -405,7 +472,7 @@ function Home() {
                     Open video URL
                   </a>
                   <p className="mt-1 text-xs text-zinc-600">
-                    Provider URLs can expire — R2 persistence lands in a follow-up.
+                    Served from R2 when persist succeeds; otherwise a temporary provider URL.
                   </p>
                 </div>
               </div>

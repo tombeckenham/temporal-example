@@ -24,8 +24,9 @@ const {
   startVideoJob,
   pollVideoJob,
   publishStatus,
+  persistVideo,
 } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '2 minutes',
+  startToCloseTimeout: '5 minutes',
   retry: {
     initialInterval: '2s',
     backoffCoefficient: 2,
@@ -101,15 +102,30 @@ export async function generateVideoWorkflow(
     if (poll.status === 'completed' && poll.videoUrl) {
       status = await projectStatus(workflowId, {
         ...status,
-        phase: 'completed',
+        phase: 'generating',
         jobStatus: 'completed',
         progress: 100,
         videoUrl: poll.videoUrl,
+        message: 'Saving video…',
+      })
+
+      // Durable copy on R2 (via edge) so the UI is not tied to expiring provider URLs
+      const stored = await persistVideo({
+        workflowId,
+        videoUrl: poll.videoUrl,
+      })
+
+      status = await projectStatus(workflowId, {
+        ...status,
+        phase: 'completed',
+        jobStatus: 'completed',
+        progress: 100,
+        videoUrl: stored.videoUrl,
         message: 'Video ready!',
       })
 
       return {
-        videoUrl: poll.videoUrl,
+        videoUrl: stored.videoUrl,
         enhancedPrompt,
         jobId,
         duration: input.duration,

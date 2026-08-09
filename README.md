@@ -2,34 +2,55 @@
 
 App that generates short AI videos from a text prompt:
 
-1. TanStack Start UI on Cloudflare Workers
-2. Temporal workflow enhances the prompt (Grok text), starts a Grok Imagine job, and polls until done
-3. Status is pushed to a per-job **Durable Object** (`JobRoom`) over hibernating WebSockets
-4. Edge starts workflows via a Node HTTP gateway (no Temporal gRPC in Workers)
+1. **Better Auth** email OTP sign-in (Postgres / PlanetScale)
+2. TanStack Start UI on Cloudflare Workers
+3. Temporal workflow enhances the prompt (Grok text), starts Grok Imagine, polls until done
+4. Status is pushed to a per-job **Durable Object** (`JobRoom`) over hibernating WebSockets
+5. Completed videos are downloaded and stored in **R2** (when the provider URL is fetchable)
+6. Edge starts workflows via a Node HTTP gateway (no Temporal gRPC in Workers)
 
 ## Prerequisites
 
 - [Bun](https://bun.sh)
 - [Temporal CLI](https://docs.temporal.io/cli) **or** Docker
-- An [xAI API key](https://console.x.ai) with Grok text + Imagine video
-- Optional: Cloudflare account for `wrangler deploy`
+- [PlanetScale Postgres](https://planetscale.com) (or any Postgres) with a role that can `CREATE` tables
+- An [xAI API key](https://console.x.ai)
+- Optional: Cloudflare account for deploy + Email Service domain
 
 ## Setup
 
 ```bash
 bun install
-cp .env.example .env.local   # if you don't already have .env.local
+cp .env.example .env.local
 ```
 
-Minimum env:
+Minimum env (see `.env.example` for the full list):
 
 ```bash
+DATABASE_URL=postgresql://...@....pg.psdb.cloud:6432/postgres?sslmode=require
+BETTER_AUTH_SECRET=   # openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3000
+EMAIL_MODE=console
 XAI_API_KEY=xai-...
 TEMPORAL_STARTER_SECRET=dev-starter-secret-change-me
 STATUS_WEBHOOK_SECRET=dev-webhook-secret-change-me
 STATUS_WEBHOOK_URL=http://127.0.0.1:3000
 TEMPORAL_STARTER_URL=http://127.0.0.1:8788
 ```
+
+Also put the same auth/DB secrets in `.dev.vars` for the Cloudflare Vite / workerd runtime.
+
+### Database schema
+
+PlanetScale API roles often **cannot CREATE on `public`**. Use a role with DDL, then:
+
+```bash
+bun run db:push
+# or apply SQL:
+# psql "$DATABASE_URL" -f drizzle/0000_long_mauler.sql
+```
+
+If you see `permission denied for schema public`, create an **admin** Postgres role in the PlanetScale dashboard and use that `DATABASE_URL`.
 
 ## Run locally
 
@@ -41,69 +62,58 @@ bun run dev:all
 | --- | --- | --- |
 | Temporal CLI | 7233 / UI 8233 | Workflow engine |
 | Worker + gateway | 8788 | Activities + `POST /workflows/start` |
-| Vite / workerd | 3000 | TanStack Start + JobRoom DO |
+| Vite / workerd | 3000 | App + JobRoom DO + auth |
 
-Open [http://localhost:3000](http://localhost:3000). Phases stream over WebSocket: `enhancing` → `starting` → `generating` → `completed`.
+1. Open [http://localhost:3000/login](http://localhost:3000/login)
+2. Enter email → OTP is printed in the **server log** when `EMAIL_MODE=console`
+3. Sign in → generate a video
 
-Temporal UI (local): [http://localhost:8233](http://localhost:8233).
-
-## Deploy (Cloudflare)
+## Deploy
 
 ```bash
 bun run deploy
 ```
 
-Run the **Node worker** separately (Fly/Render/K8s/etc.) with access to Temporal Cloud and your Workers URL:
-
-- `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` + `TEMPORAL_API_KEY` (or mTLS cert paths)
-- `STATUS_WEBHOOK_URL=https://<your-worker>.workers.dev`
-- `STATUS_WEBHOOK_SECRET` (same as Wrangler secret)
-- `TEMPORAL_STARTER_SECRET` (edge uses this via Wrangler secret)
+**Worker (Node)** — `Dockerfile.worker` or any host:
 
 ```bash
-wrangler secret put STATUS_WEBHOOK_SECRET
-wrangler secret put TEMPORAL_STARTER_SECRET
-wrangler secret put TEMPORAL_STARTER_URL
+docker build -f Dockerfile.worker -t temporal-example-worker .
 ```
 
-Temporal service: **Temporal Cloud** (recommended). Workers stay on Node — they do not run inside Cloudflare Workers isolates.
+Env for the Node worker: `XAI_API_KEY`, Temporal Cloud address/namespace/auth, `TEMPORAL_STARTER_SECRET`, `STATUS_WEBHOOK_URL`, `STATUS_WEBHOOK_SECRET`.
+
+**Edge secrets** (`wrangler secret put`):
+
+- `DATABASE_URL` (or Hyperdrive)
+- `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`
+- `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`
+- `STATUS_WEBHOOK_SECRET`
+- `EMAIL_FROM` (and set `EMAIL_MODE=cf` once Email Service domain is onboarded)
 
 ## Architecture
 
 ```
 Browser ──WS──► JobRoom DO (per workflowId)
-Browser ──HTTP► TanStack Start Worker ──HTTP► Node gateway ──gRPC► Temporal
-                                                              │
-                                                         Worker process
-                                                   workflows + activities
-                                                              │
-                                              publishStatus (HMAC) ──► JobRoom
-                                              TanStack AI ──► xAI (Grok Imagine)
+Browser ──HTTP► TanStack Start + Better Auth ──HTTP► Node gateway ──gRPC► Temporal
+                         │                                    │
+                    PlanetScale PG                      Worker process
+                    (users / sessions)            workflows + activities
+                                                          │
+                                           publishStatus ──► JobRoom
+                                           persistVideo  ──► R2 via edge
+                                           TanStack AI ──► xAI
 ```
 
-| Path | Role |
-| --- | --- |
-| `src/durable-objects/JobRoom.ts` | Live status + WebSockets (one DO per job) |
-| `src/temporal/workflows/` | Deterministic orchestration |
-| `src/temporal/activities/` | Prompt enhance, video start/poll, edge notify |
-| `src/temporal/gateway.ts` | Workflow start API for the edge |
-| `src/server/video.ts` | Server function → gateway |
-| `src/routes/index.tsx` | UI |
-| `AGENTS.md` | Agent / contributor conventions |
-
-Live job status is stored on **JobRoom** Durable Objects, not D1. D1 is optional for secondary indexes only.
-
-## E2E tests (CopilotKit AIMock)
+## E2E
 
 ```bash
 bun run test:e2e
 ```
 
-[`@copilotkit/aimock`](https://github.com/CopilotKit/aimock) mocks Grok chat and Imagine video. The harness starts AIMock, a worker with `XAI_BASE_URL` / `XAI_API_KEY=mock`, and runs Playwright against the UI.
-
-Optional: `XAI_BASE_URL` (see `src/temporal/activities/xaiConfig.ts`). Full env list: `.env.example`.
+Uses CopilotKit AIMock for Grok; sets `E2E_BYPASS_AUTH=1` for the run only.
 
 ## Notes
 
-- Provider video URLs can expire; R2 persistence is not wired yet.
-- Product UI uses JobRoom WebSockets, not Temporal Query polling.
+- Temporal Cloud is optional locally (`localhost:7233` is enough).
+- R2 persist skips gracefully if the provider URL is not downloadable (e.g. AIMock placeholder URLs).
+- Live job status is on Durable Objects, not Postgres.

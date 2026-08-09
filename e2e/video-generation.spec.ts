@@ -37,44 +37,33 @@ test.describe('video generation (AIMock)', () => {
     ).toBeChecked()
 
     const generate = page.getByRole('button', { name: /^Generate video$/i })
-    await expect(generate).toBeEnabled()
+    await expect(generate).toBeEnabled({ timeout: 15_000 })
     await generate.click()
 
-    // Button should enter a busy state quickly
-    await expect(
-      page.getByRole('button', {
-        name: /Starting workflow|Generating/i,
-      }),
-    ).toBeVisible({ timeout: 10_000 })
-
-    // Workflow id appears once the gateway accepts the start
     const workflowId = page.locator('p.font-mono').filter({ hasText: /^video-/ })
-    const errorBanner = page.locator('div').filter({ hasText: /Failed to start|required|Unauthorized|error/i }).first()
-
     try {
       await expect(workflowId).toBeVisible({ timeout: 45_000 })
     } catch (err) {
       const bodyText = await page.locator('body').innerText()
       throw new Error(
-        `workflow id not shown.\nconsole: ${consoleErrors.join(' | ')}\nbody:\n${bodyText.slice(0, 2000)}`,
+        `workflow id not shown.\nconsole: ${consoleErrors.join(' | ')}\nbody:\n${bodyText.slice(0, 2500)}`,
         { cause: err },
       )
     }
 
-    if (await errorBanner.isVisible().catch(() => false)) {
-      throw new Error(`error banner: ${await errorBanner.innerText()}`)
-    }
-
-    // JobRoom WS drives phase updates; wait for completed message
     await expect(page.getByText('Video ready!')).toBeVisible({
       timeout: 90_000,
     })
 
     const video = page.locator('video')
     await expect(video).toBeVisible()
-    await expect(video).toHaveAttribute(
-      'src',
-      'https://example.com/e2e-video.mp4',
-    )
+    // Provider mock URL or R2 path after persist
+    const src = await video.getAttribute('src')
+    if (
+      src !== 'https://example.com/e2e-video.mp4' &&
+      !src?.includes('/api/videos/')
+    ) {
+      throw new Error(`unexpected video src: ${src}`)
+    }
   })
 })

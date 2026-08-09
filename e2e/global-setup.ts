@@ -8,6 +8,7 @@
  * `.dev.vars` secrets match. If those ports are busy, stop the other stack first.
  */
 import { type ChildProcess, execSync, spawn } from 'node:child_process'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { LLMock } from '@copilotkit/aimock'
 
@@ -96,6 +97,9 @@ function e2eEnv(): NodeJS.ProcessEnv {
     STATUS_WEBHOOK_SECRET: 'dev-webhook-secret-change-me',
     TEMPORAL_ADDRESS,
     TEMPORAL_NAMESPACE: process.env['TEMPORAL_NAMESPACE'] ?? 'default',
+    // Skip Better Auth for Playwright; worker still uses AIMock for xAI
+    E2E_BYPASS_AUTH: '1',
+    EMAIL_MODE: 'console',
   }
 }
 
@@ -126,8 +130,33 @@ function killStrayWorkers(): void {
   }
 }
 
+const DEV_VARS_PATH = '.dev.vars'
+const E2E_MARKER = '# e2e-bypass-auth'
+let devVarsBackup: string | undefined
+
+function enableE2eAuthBypass(): void {
+  try {
+    devVarsBackup = readFileSync(DEV_VARS_PATH, 'utf8')
+  } catch {
+    devVarsBackup = ''
+  }
+  if (!devVarsBackup.includes('E2E_BYPASS_AUTH=')) {
+    appendFileSync(
+      DEV_VARS_PATH,
+      `\n${E2E_MARKER}\nE2E_BYPASS_AUTH=1\n`,
+    )
+  }
+}
+
+function restoreDevVars(): void {
+  if (devVarsBackup !== undefined) {
+    writeFileSync(DEV_VARS_PATH, devVarsBackup)
+  }
+}
+
 export default async function globalSetup(): Promise<() => Promise<void>> {
   killStrayWorkers()
+  enableE2eAuthBypass()
   await delay(500)
 
   mock = new LLMock({
@@ -186,5 +215,6 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       await mock.stop()
       mock = undefined
     }
+    restoreDevVars()
   }
 }

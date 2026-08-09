@@ -1,0 +1,14 @@
+# Temporal worker + HTTP gateway (runs off Cloudflare Workers)
+FROM oven/bun:1.3 AS base
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production=false
+
+COPY tsconfig.json ./
+COPY src ./src
+
+ENV NODE_ENV=production
+EXPOSE 8788
+
+CMD ["bun", "run", "tsx", "src/temporal/worker.ts"]

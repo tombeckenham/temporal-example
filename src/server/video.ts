@@ -1,4 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
+import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
@@ -15,11 +17,6 @@ const workflowIdSchema = z.object({
   workflowId: z.string().min(1, 'workflowId is required'),
 })
 
-/**
- * Resolve Temporal starter base URL.
- * - Production edge: TEMPORAL_STARTER_URL (Node gateway)
- * - Local: defaults to http://127.0.0.1:8788
- */
 function starterBaseUrl(): string {
   return (
     process.env['TEMPORAL_STARTER_URL'] ??
@@ -53,14 +50,44 @@ async function starterFetch(
   })
 }
 
+async function requireUserId(): Promise<string> {
+  if (process.env['E2E_BYPASS_AUTH'] === '1') {
+    return 'e2e-user'
+  }
+
+  // Dynamic import — avoids loading Better Auth / Postgres on the e2e hot path
+  // (Workers runtime has had Buffer issues with some auth deps).
+  const { auth } = await import('../auth/server.ts')
+  const session = await auth.api.getSession({
+    headers: getRequest().headers,
+  })
+  if (!session?.user?.id) {
+    throw new Error('Sign in required')
+  }
+  return session.user.id
+}
+
 /**
  * Start a video workflow via the Node Temporal gateway.
- * Edge never imports @temporalio/* (gRPC is not for Workers isolates).
+ * Requires a Better Auth session (unless E2E_BYPASS_AUTH=1).
  */
 export const startVideoWorkflow = createServerFn({ method: 'POST' })
   .validator(generateVideoInputSchema)
   .handler(async ({ data }) => {
+    const userId = await requireUserId()
     const workflowId = `video-${nanoid(10)}`
+    const recordJob = process.env['E2E_BYPASS_AUTH'] !== '1'
+
+    if (recordJob) {
+      const { getDb } = await import('../db/index.ts')
+      const { videoJob } = await import('../db/schema.ts')
+      await getDb().insert(videoJob).values({
+        id: workflowId,
+        userId,
+        prompt: data.prompt,
+        status: 'running',
+      })
+    }
 
     const response = await starterFetch('/workflows/start', {
       method: 'POST',
@@ -74,6 +101,14 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
     })
 
     if (!response.ok) {
+      if (recordJob) {
+        const { getDb } = await import('../db/index.ts')
+        const { videoJob } = await import('../db/schema.ts')
+        await getDb()
+          .update(videoJob)
+          .set({ status: 'failed', updatedAt: new Date() })
+          .where(eq(videoJob.id, workflowId))
+      }
       const text = await response.text()
       throw new Error(
         `Failed to start workflow (${response.status}): ${text || response.statusText}`,
@@ -86,11 +121,12 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
 
 /**
  * Optional Temporal query via gateway (ops / fallback).
- * Prefer JobRoom WebSocket + GET /api/jobs/:id for product UI.
  */
 export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
   .validator(workflowIdSchema)
   .handler(async ({ data }) => {
+    await requireUserId()
+
     const response = await starterFetch(
       `/workflows/${encodeURIComponent(data.workflowId)}/status`,
     )
