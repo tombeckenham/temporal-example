@@ -1,11 +1,12 @@
 import { generateVideo, getVideoJobStatus } from '@tanstack/ai'
 import { grokVideo } from '@tanstack/ai-grok'
 import type { VideoJobStatus, VideoSize } from '../types.ts'
+import { xaiClientConfig } from './xaiConfig.ts'
 
 const MODEL = 'grok-imagine-video' as const
 
 function videoAdapter() {
-  return grokVideo(MODEL)
+  return grokVideo(MODEL, xaiClientConfig())
 }
 
 export interface StartVideoJobInput {

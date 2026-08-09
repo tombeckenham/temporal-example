@@ -15,3 +15,7 @@ todos.json
 dev.db
 dev.db-*
 .cursor
+.dev.vars
+test-results
+playwright-report
+blob-report

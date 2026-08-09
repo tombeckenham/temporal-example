@@ -1,85 +1,109 @@
-# Temporal + TanStack AI video example
+# Temporal + TanStack AI + Cloudflare video
 
-A small demo of **Temporal workflows** driving **Grok Imagine** video generation via **TanStack AI** and **TanStack Start**.
+App that generates short AI videos from a text prompt:
 
-## What you will learn
-
-Video generation is a multi-minute, failure-prone job. Temporal makes that durable:
-
-1. **Workflow** orchestrates steps (enhance prompt → start job → poll)
-2. **Activities** call xAI / TanStack AI (side effects)
-3. **Queries** expose live status to the UI
-4. **Sleep** between polls is durable — worker restarts do not lose progress
-
-Open the [Temporal UI](http://localhost:8233) while a job runs and inspect the event history.
+1. TanStack Start UI on Cloudflare Workers
+2. Temporal workflow enhances the prompt (Grok text), starts a Grok Imagine job, and polls until done
+3. Status is pushed to a per-job **Durable Object** (`JobRoom`) over hibernating WebSockets
+4. Edge starts workflows via a Node HTTP gateway (no Temporal gRPC in Workers)
 
 ## Prerequisites
 
 - [Bun](https://bun.sh)
 - [Temporal CLI](https://docs.temporal.io/cli) **or** Docker
-- An [xAI API key](https://console.x.ai) with access to Grok text + Imagine video
+- An [xAI API key](https://console.x.ai) with Grok text + Imagine video
+- Optional: Cloudflare account for `wrangler deploy`
 
 ## Setup
 
 ```bash
 bun install
+cp .env.example .env.local   # if you don't already have .env.local
 ```
 
-Add your key to `.env.local`:
+Minimum env:
 
 ```bash
 XAI_API_KEY=xai-...
+TEMPORAL_STARTER_SECRET=dev-starter-secret-change-me
+STATUS_WEBHOOK_SECRET=dev-webhook-secret-change-me
+STATUS_WEBHOOK_URL=http://127.0.0.1:3000
+TEMPORAL_STARTER_URL=http://127.0.0.1:8788
 ```
 
-## Run
-
-**One command** (Temporal server + worker + web app, Foreman-style logs):
+## Run locally
 
 ```bash
 bun run dev:all
 ```
 
-Same thing explicitly:
+| Process | Port | Role |
+| --- | --- | --- |
+| Temporal CLI | 7233 / UI 8233 | Workflow engine |
+| Worker + gateway | 8788 | Activities + `POST /workflows/start` |
+| Vite / workerd | 3000 | TanStack Start + JobRoom DO |
+
+Open [http://localhost:3000](http://localhost:3000). Phases stream over WebSocket: `enhancing` → `starting` → `generating` → `completed`.
+
+Temporal UI (local): [http://localhost:8233](http://localhost:8233).
+
+## Deploy (Cloudflare)
 
 ```bash
-bun run --parallel temporal:dev worker dev
+bun run deploy
 ```
 
-Or three terminals:
+Run the **Node worker** separately (Fly/Render/K8s/etc.) with access to Temporal Cloud and your Workers URL:
+
+- `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` + `TEMPORAL_API_KEY` (or mTLS cert paths)
+- `STATUS_WEBHOOK_URL=https://<your-worker>.workers.dev`
+- `STATUS_WEBHOOK_SECRET` (same as Wrangler secret)
+- `TEMPORAL_STARTER_SECRET` (edge uses this via Wrangler secret)
 
 ```bash
-bun run temporal:dev   # Temporal CLI (:7233, UI :8233)
-# or: bun run temporal:docker
-bun run worker         # workflows + activities
-bun --bun run dev      # web app :3000
+wrangler secret put STATUS_WEBHOOK_SECRET
+wrangler secret put TEMPORAL_STARTER_SECRET
+wrangler secret put TEMPORAL_STARTER_URL
 ```
 
-Open [http://localhost:3000](http://localhost:3000), submit a prompt, and watch phases: `enhancing` → `starting` → `generating` → `completed`.
+Temporal service: **Temporal Cloud** (recommended). Workers stay on Node — they do not run inside Cloudflare Workers isolates.
 
 ## Architecture
 
 ```
-Browser  ──server fn──►  Temporal Client  ──start/query──►  Temporal Server
-                                                                  │
-                                                                  ▼
-                                                           Worker process
-                                                    workflows/ + activities/
-                                                           │
-                                                           ▼
-                                              TanStack AI → xAI (Grok Imagine)
+Browser ──WS──► JobRoom DO (per workflowId)
+Browser ──HTTP► TanStack Start Worker ──HTTP► Node gateway ──gRPC► Temporal
+                                                              │
+                                                         Worker process
+                                                   workflows + activities
+                                                              │
+                                              publishStatus (HMAC) ──► JobRoom
+                                              TanStack AI ──► xAI (Grok Imagine)
 ```
 
 | Path | Role |
 | --- | --- |
-| `src/temporal/workflows/` | Deterministic orchestration + status query |
-| `src/temporal/activities/` | Prompt enhance + video start/poll |
-| `src/server/video.ts` | Start workflow / query status |
+| `src/durable-objects/JobRoom.ts` | Live status + WebSockets (one DO per job) |
+| `src/temporal/workflows/` | Deterministic orchestration |
+| `src/temporal/activities/` | Prompt enhance, video start/poll, edge notify |
+| `src/temporal/gateway.ts` | Workflow start API for the edge |
+| `src/server/video.ts` | Server function → gateway |
 | `src/routes/index.tsx` | UI |
-| `AGENTS.md` | Conventions for coding agents |
+| `AGENTS.md` | Agent / contributor conventions |
+
+Live job status is stored on **JobRoom** Durable Objects, not D1. D1 is optional for secondary indexes only.
+
+## E2E tests (CopilotKit AIMock)
+
+```bash
+bun run test:e2e
+```
+
+[`@copilotkit/aimock`](https://github.com/CopilotKit/aimock) mocks Grok chat and Imagine video. The harness starts AIMock, a worker with `XAI_BASE_URL` / `XAI_API_KEY=mock`, and runs Playwright against the UI.
+
+Optional: `XAI_BASE_URL` (see `src/temporal/activities/xaiConfig.ts`). Full env list: `.env.example`.
 
 ## Notes
 
-- Default video model: `grok-imagine-video` (text-to-video, 1–15s)
-- Default size: `16:9_480p` (cheaper/faster for demos)
-- Generated video URLs from xAI are temporary — download if you need to keep them
-- See `AGENTS.md` for Temporal pitfalls and coding rules
+- Provider video URLs can expire; R2 persistence is not wired yet.
+- Product UI uses JobRoom WebSockets, not Temporal Query polling.

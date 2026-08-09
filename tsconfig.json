@@ -2,11 +2,22 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    "worker-configuration.d.ts",
     "eslint.config.js",
     "prettier.config.js",
     "vite.config.ts"
   ],
-  "exclude": ["node_modules", "dist", ".output", ".nitro", ".tanstack", ".temporal"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".output",
+    ".nitro",
+    ".tanstack",
+    ".temporal",
+    ".wrangler",
+    "e2e",
+    "playwright.config.ts"
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

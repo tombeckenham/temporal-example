@@ -1,9 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
-import {
-  getVideoWorkflowStatus,
-  startVideoWorkflow,
-} from '../server/video.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { startVideoWorkflow } from '../server/video.ts'
 import type {
   GenerateVideoInput,
   VideoPhase,
@@ -27,6 +24,15 @@ const SIZE_OPTIONS = [
   { value: '1:1_480p', label: '1:1 · 480p' },
 ] as const
 
+type WsMessage =
+  | { type: 'hello'; status: null }
+  | { type: 'status'; status: VideoWorkflowStatus | null; updatedAt: string | null }
+
+function jobWebSocketUrl(workflowId: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/jobs/${encodeURIComponent(workflowId)}`
+}
+
 function Home() {
   const [prompt, setPrompt] = useState(
     'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
@@ -36,48 +42,120 @@ function Home() {
   const [enhancePrompt, setEnhancePrompt] = useState(true)
 
   const [workflowId, setWorkflowId] = useState<string | null>(null)
-  const [executionStatus, setExecutionStatus] = useState<string | null>(null)
   const [status, setStatus] = useState<VideoWorkflowStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)
+  const [wsState, setWsState] = useState<'idle' | 'connecting' | 'open' | 'closed'>(
+    'idle',
+  )
+  const wsRef = useRef<WebSocket | null>(null)
 
   const isRunning =
     !!workflowId &&
     status?.phase !== 'completed' &&
-    status?.phase !== 'failed' &&
-    executionStatus !== 'FAILED' &&
-    executionStatus !== 'TERMINATED' &&
-    executionStatus !== 'CANCELED' &&
-    executionStatus !== 'TIMED_OUT'
+    status?.phase !== 'failed'
 
-  const refreshStatus = useCallback(async (id: string) => {
-    const result = await getVideoWorkflowStatus({ data: { workflowId: id } })
-    setExecutionStatus(result.executionStatus)
-    setStatus(result.status)
-    if (result.status.phase === 'failed' || result.status.error) {
-      setError(result.status.error ?? result.status.message)
+  const applyStatus = useCallback((next: VideoWorkflowStatus | null) => {
+    if (!next) return
+    setStatus(next)
+    if (next.phase === 'failed' || next.error) {
+      setError(next.error ?? next.message)
     }
   }, [])
 
+  // Real-time: JobRoom Durable Object WebSocket (no Temporal poll storm)
   useEffect(() => {
-    if (!workflowId || !isRunning) return
-
-    const tick = () => {
-      refreshStatus(workflowId).catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err))
-      })
+    if (!workflowId || !isRunning) {
+      wsRef.current?.close()
+      wsRef.current = null
+      if (!workflowId) setWsState('idle')
+      return
     }
 
-    tick()
-    const interval = setInterval(tick, 2000)
-    return () => clearInterval(interval)
-  }, [workflowId, isRunning, refreshStatus])
+    let cancelled = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    let attempt = 0
+
+    const connect = () => {
+      if (cancelled) return
+      setWsState('connecting')
+      const ws = new WebSocket(jobWebSocketUrl(workflowId))
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        attempt = 0
+        setWsState('open')
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(String(event.data)) as WsMessage
+          if (msg.type === 'status') {
+            applyStatus(msg.status)
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      }
+
+      ws.onerror = () => {
+        // onclose handles reconnect
+      }
+
+      ws.onclose = () => {
+        setWsState('closed')
+        if (cancelled) return
+        // Still running? reconnect with backoff
+        attempt += 1
+        const delay = Math.min(1000 * 2 ** Math.min(attempt, 4), 15_000)
+        reconnectTimer = setTimeout(connect, delay)
+      }
+    }
+
+    connect()
+
+    return () => {
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      wsRef.current?.close()
+      wsRef.current = null
+    }
+  }, [workflowId, isRunning, applyStatus])
+
+  // HTTP snapshot fallback if WS is slow to deliver first status
+  useEffect(() => {
+    if (!workflowId || !isRunning) return
+    if (status) return
+
+    const controller = new AbortController()
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `/api/jobs/${encodeURIComponent(workflowId)}`,
+          { signal: controller.signal },
+        )
+        if (!res.ok) return
+        const body = (await res.json()) as {
+          status: VideoWorkflowStatus | null
+        }
+        if (body.status) applyStatus(body.status)
+      } catch {
+        // ignore abort / transient
+      }
+    }
+
+    void tick()
+    const interval = setInterval(() => void tick(), 5000)
+    return () => {
+      controller.abort()
+      clearInterval(interval)
+    }
+  }, [workflowId, isRunning, status, applyStatus])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setStatus(null)
-    setExecutionStatus(null)
     setWorkflowId(null)
     setIsStarting(true)
 
@@ -103,10 +181,11 @@ function Home() {
   }
 
   function reset() {
+    wsRef.current?.close()
     setWorkflowId(null)
     setStatus(null)
-    setExecutionStatus(null)
     setError(null)
+    setWsState('idle')
   }
 
   return (
@@ -114,7 +193,7 @@ function Home() {
       <div className="mx-auto max-w-3xl px-6 py-12">
         <header className="mb-10">
           <p className="text-sm font-medium tracking-wide text-violet-400 uppercase">
-            Temporal + TanStack AI
+            Temporal + TanStack AI + Cloudflare
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
             AI video generation
@@ -122,16 +201,11 @@ function Home() {
           <p className="mt-3 max-w-2xl text-zinc-400">
             Submit a prompt → Temporal workflow enhances it with Grok text,
             starts a Grok Imagine video job, then durably polls until the clip
-            is ready. Open the{' '}
-            <a
-              href="http://localhost:8233"
-              target="_blank"
-              rel="noreferrer"
-              className="text-violet-400 underline decoration-violet-400/40 underline-offset-2 hover:text-violet-300"
-            >
-              Temporal UI
-            </a>{' '}
-            to watch the event history.
+            is ready. Live progress is pushed over a{' '}
+            <strong className="font-medium text-zinc-300">
+              Durable Object WebSocket
+            </strong>{' '}
+            (one JobRoom per workflow — not a global poll hub).
           </p>
         </header>
 
@@ -142,6 +216,7 @@ function Home() {
           <label className="block">
             <span className="text-sm font-medium text-zinc-300">Prompt</span>
             <textarea
+              aria-label="Prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
@@ -187,6 +262,7 @@ function Home() {
           <label className="flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
+              aria-label="Enhance prompt with Grok text before video gen"
               checked={enhancePrompt}
               onChange={(e) => setEnhancePrompt(e.target.checked)}
               disabled={isStarting || isRunning}
@@ -229,11 +305,9 @@ function Home() {
                   <h2 className="text-sm font-medium text-zinc-300">
                     Workflow
                   </h2>
-                  {executionStatus && (
-                    <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-300">
-                      {executionStatus}
-                    </span>
-                  )}
+                  <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-300">
+                    WS: {wsState}
+                  </span>
                 </div>
                 <p className="mt-2 font-mono text-xs break-all text-zinc-500">
                   {workflowId}
@@ -331,8 +405,7 @@ function Home() {
                     Open video URL
                   </a>
                   <p className="mt-1 text-xs text-zinc-600">
-                    Provider URLs can expire — download promptly if you need to
-                    keep the clip.
+                    Provider URLs can expire — R2 persistence lands in a follow-up.
                   </p>
                 </div>
               </div>
@@ -342,9 +415,10 @@ function Home() {
 
         <footer className="mt-12 border-t border-zinc-900 pt-6 text-xs text-zinc-600">
           <p>
-            Requires: Temporal server (:7233), worker process, and{' '}
-            <code className="text-zinc-500">XAI_API_KEY</code> in{' '}
-            <code className="text-zinc-500">.env.local</code>.
+            Requires: Temporal + worker/gateway (:8788), web app,{' '}
+            <code className="text-zinc-500">XAI_API_KEY</code>, and{' '}
+            <code className="text-zinc-500">TEMPORAL_STARTER_SECRET</code>. Edge
+            status path: JobRoom DO (not D1).
           </p>
         </footer>
       </div>

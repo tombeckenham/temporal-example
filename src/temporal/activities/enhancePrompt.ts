@@ -1,5 +1,6 @@
 import { chat } from '@tanstack/ai'
 import { grokText } from '@tanstack/ai-grok'
+import { xaiClientConfig } from './xaiConfig.ts'
 
 /**
  * Activity: polish a raw user prompt into a stronger video-generation brief.
@@ -7,7 +8,7 @@ import { grokText } from '@tanstack/ai-grok'
  */
 export async function enhancePrompt(prompt: string): Promise<string> {
   const enhanced = await chat({
-    adapter: grokText('grok-4.3'),
+    adapter: grokText('grok-4.3', xaiClientConfig()),
     stream: false,
     systemPrompts: [
       `You rewrite user prompts for AI video generation (Grok Imagine).

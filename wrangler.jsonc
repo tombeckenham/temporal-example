@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "temporal-example",
+  "compatibility_date": "2026-08-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "observability": {
+    "enabled": true,
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "JOB_ROOM",
+        "class_name": "JobRoom",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["JobRoom"],
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "VIDEOS",
+      "bucket_name": "temporal-example-videos",
+      "preview_bucket_name": "temporal-example-videos-preview",
+    },
+  ],
+  // Secrets (set via `wrangler secret put`):
+  //   STATUS_WEBHOOK_SECRET  — HMAC for Temporal → edge job events
+  //   TEMPORAL_STARTER_URL   — Node gateway base URL (e.g. https://worker.example.com)
+  //   TEMPORAL_STARTER_SECRET — shared secret for start/status gateway
+  "vars": {
+    "APP_NAME": "temporal-example",
+  },
+}
