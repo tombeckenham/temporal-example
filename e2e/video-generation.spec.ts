@@ -40,13 +40,16 @@ test.describe('video generation (AIMock)', () => {
     await expect(generate).toBeEnabled({ timeout: 15_000 })
     await generate.click()
 
-    const workflowId = page.locator('p.font-mono').filter({ hasText: /^video-/ })
+    // Workflow id is a Crockford Base32 ULID (26 chars)
+    const workflowId = page.locator('p.font-mono').filter({
+      hasText: /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/i,
+    })
     try {
       await expect(workflowId).toBeVisible({ timeout: 45_000 })
     } catch (err) {
       const bodyText = await page.locator('body').innerText()
       throw new Error(
-        `workflow id not shown.\nconsole: ${consoleErrors.join(' | ')}\nbody:\n${bodyText.slice(0, 2500)}`,
+        `workflow ULID not shown.\nconsole: ${consoleErrors.join(' | ')}\nbody:\n${bodyText.slice(0, 2500)}`,
         { cause: err },
       )
     }

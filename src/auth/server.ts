@@ -3,6 +3,7 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { emailOTP } from 'better-auth/plugins'
 import { getDb } from '../db/index.ts'
 import { authSchema } from '../db/schema.ts'
+import { newId } from '../lib/id.ts'
 import { sendOtpEmail } from './email.ts'
 
 function authSecret(): string {
@@ -32,6 +33,12 @@ function createAuth() {
       provider: 'pg',
       schema: authSchema,
     }),
+    advanced: {
+      database: {
+        // user / session / account / verification primary keys
+        generateId: () => newId(),
+      },
+    },
     emailAndPassword: {
       enabled: false,
     },

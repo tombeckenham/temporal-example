@@ -1,8 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { eq } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { VIDEO_SIZES } from '../temporal/types.ts'
 
@@ -75,7 +75,7 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
   .validator(generateVideoInputSchema)
   .handler(async ({ data }) => {
     const userId = await requireUserId()
-    const workflowId = `video-${nanoid(10)}`
+    const workflowId = newId()
     const recordJob = process.env['E2E_BYPASS_AUTH'] !== '1'
 
     if (recordJob) {

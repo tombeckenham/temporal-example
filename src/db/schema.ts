@@ -1,6 +1,7 @@
 /**
  * Better Auth tables (Postgres / PlanetScale).
  * Column names snake_case; drizzleAdapter maps camelCase fields by default.
+ * All primary keys are ULIDs (text) via `newId()` / Better Auth `advanced.generateId`.
  */
 import {
   boolean,
@@ -61,7 +62,7 @@ export const verification = pgTable('verification', {
 
 /** Tracks which user owns a video workflow (for listing / authz). */
 export const videoJob = pgTable('video_job', {
-  id: text('id').primaryKey(), // workflowId
+  id: text('id').primaryKey(), // ULID = Temporal workflowId
   userId: text('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
