@@ -8,7 +8,7 @@
  * `.dev.vars` secrets match. If those ports are busy, stop the other stack first.
  */
 import { type ChildProcess, execSync, spawn } from 'node:child_process'
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { LLMock } from '@copilotkit/aimock'
 
@@ -82,6 +82,12 @@ function spawnLogged(
   return child
 }
 
+/** Shared e2e secrets — must match worker process AND workerd `.dev.vars`. */
+export const E2E_SECRETS = {
+  TEMPORAL_STARTER_SECRET: 'dev-starter-secret-change-me',
+  STATUS_WEBHOOK_SECRET: 'dev-webhook-secret-change-me',
+} as const
+
 /**
  * Must match `.dev.vars` / `.env.local` so the edge Worker and worker process agree.
  */
@@ -90,11 +96,11 @@ function e2eEnv(): NodeJS.ProcessEnv {
     ...process.env,
     XAI_API_KEY: 'mock',
     XAI_BASE_URL: `http://127.0.0.1:${E2E_PORTS.aimock}/v1`,
-    TEMPORAL_STARTER_SECRET: 'dev-starter-secret-change-me',
+    TEMPORAL_STARTER_SECRET: E2E_SECRETS.TEMPORAL_STARTER_SECRET,
     TEMPORAL_STARTER_URL: `http://127.0.0.1:${E2E_PORTS.gateway}`,
     TEMPORAL_GATEWAY_PORT: String(E2E_PORTS.gateway),
     STATUS_WEBHOOK_URL: `http://127.0.0.1:${E2E_PORTS.app}`,
-    STATUS_WEBHOOK_SECRET: 'dev-webhook-secret-change-me',
+    STATUS_WEBHOOK_SECRET: E2E_SECRETS.STATUS_WEBHOOK_SECRET,
     TEMPORAL_ADDRESS,
     TEMPORAL_NAMESPACE: process.env['TEMPORAL_NAMESPACE'] ?? 'default',
     // Skip Better Auth for Playwright; worker still uses AIMock for xAI
@@ -131,32 +137,68 @@ function killStrayWorkers(): void {
 }
 
 const DEV_VARS_PATH = '.dev.vars'
-const E2E_MARKER = '# e2e-bypass-auth'
 let devVarsBackup: string | undefined
 
-function enableE2eAuthBypass(): void {
+/**
+ * Ensure workerd `.dev.vars` has the same gateway/webhook secrets as the Node
+ * worker. Backs up and restores the original file on teardown.
+ */
+function writeE2eDevVars(): void {
   try {
     devVarsBackup = readFileSync(DEV_VARS_PATH, 'utf8')
   } catch {
     devVarsBackup = ''
   }
-  if (!devVarsBackup.includes('E2E_BYPASS_AUTH=')) {
-    appendFileSync(
-      DEV_VARS_PATH,
-      `\n${E2E_MARKER}\nE2E_BYPASS_AUTH=1\n`,
-    )
+
+  const overrides: Record<string, string> = {
+    TEMPORAL_STARTER_SECRET: E2E_SECRETS.TEMPORAL_STARTER_SECRET,
+    TEMPORAL_STARTER_URL: `http://127.0.0.1:${E2E_PORTS.gateway}`,
+    STATUS_WEBHOOK_SECRET: E2E_SECRETS.STATUS_WEBHOOK_SECRET,
+    E2E_BYPASS_AUTH: '1',
+    EMAIL_MODE: 'console',
   }
+
+  const map = new Map<string, string>()
+  for (const line of devVarsBackup.split('\n')) {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)
+    if (m?.[1] !== undefined && m[2] !== undefined) {
+      map.set(m[1], m[2])
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    map.set(k, v)
+  }
+  if (!map.has('BETTER_AUTH_SECRET')) {
+    map.set('BETTER_AUTH_SECRET', 'e2e-better-auth-secret-min-16')
+  }
+  if (!map.has('BETTER_AUTH_URL')) {
+    map.set('BETTER_AUTH_URL', 'http://127.0.0.1:3000')
+  }
+
+  const body = [
+    '# e2e overrides applied by e2e/global-setup.ts (original restored on teardown)',
+    ...[...map.entries()].map(([k, v]) => `${k}=${v}`),
+    '',
+  ].join('\n')
+  writeFileSync(DEV_VARS_PATH, body)
 }
 
 function restoreDevVars(): void {
-  if (devVarsBackup !== undefined) {
-    writeFileSync(DEV_VARS_PATH, devVarsBackup)
+  if (devVarsBackup === undefined) return
+  if (devVarsBackup === '') {
+    try {
+      unlinkSync(DEV_VARS_PATH)
+    } catch {
+      // file may not exist
+    }
+    return
   }
+  writeFileSync(DEV_VARS_PATH, devVarsBackup)
 }
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   killStrayWorkers()
-  enableE2eAuthBypass()
+  writeE2eDevVars()
   await delay(500)
 
   mock = new LLMock({

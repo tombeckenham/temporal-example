@@ -25,6 +25,23 @@ import { generateVideoWorkflow, statusQuery } from './workflows/index.ts'
 
 const DEFAULT_PORT = 8788
 
+/** Simple sliding-window rate limit for workflow starts (per process). */
+const START_RATE_WINDOW_MS = 60_000
+const START_RATE_MAX = Number(process.env['TEMPORAL_START_RATE_MAX'] ?? 30)
+const startTimestamps: number[] = []
+
+function allowStart(): boolean {
+  const now = Date.now()
+  while (startTimestamps.length > 0) {
+    const oldest = startTimestamps[0]
+    if (oldest === undefined || now - oldest < START_RATE_WINDOW_MS) break
+    startTimestamps.shift()
+  }
+  if (startTimestamps.length >= START_RATE_MAX) return false
+  startTimestamps.push(now)
+  return true
+}
+
 function readBearer(req: { headers: { authorization?: string | undefined } }): string | null {
   const header = req.headers.authorization
   if (!header?.startsWith('Bearer ')) return null
@@ -107,6 +124,13 @@ export function startTemporalGateway(port = DEFAULT_PORT): void {
       }
 
       if (req.method === 'POST' && url.pathname === '/workflows/start') {
+        if (!allowStart()) {
+          json(res, 429, {
+            error: `Rate limit: max ${START_RATE_MAX} starts per minute`,
+          })
+          return
+        }
+
         const body = await readJson(req)
         if (!isGenerateInput(body)) {
           json(res, 400, { error: 'Invalid start payload' })

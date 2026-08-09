@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authClient } from '../auth/client.ts'
+import { listMyJobs, type VideoJobRow } from '../server/jobs.ts'
 import { getSession, type PublicSession } from '../server/session.ts'
 import { startVideoWorkflow } from '../server/video.ts'
 import type {
@@ -22,9 +23,19 @@ export const Route = createFileRoute('/')({
             name: 'E2E User',
           },
         } satisfies PublicSession,
+        jobs: [] as VideoJobRow[],
       }
     }
-    return { session: await getSession() }
+    const session = await getSession()
+    let jobs: VideoJobRow[] = []
+    if (session?.user) {
+      try {
+        jobs = await listMyJobs({ data: { limit: 12 } })
+      } catch {
+        jobs = []
+      }
+    }
+    return { session, jobs }
   },
 })
 
@@ -52,8 +63,9 @@ function jobWebSocketUrl(workflowId: string): string {
 }
 
 function Home() {
-  const { session: initialSession } = Route.useLoaderData()
+  const { session: initialSession, jobs: initialJobs } = Route.useLoaderData()
   const [session, setSession] = useState<PublicSession>(initialSession)
+  const [jobs, setJobs] = useState<VideoJobRow[]>(initialJobs)
 
   const [prompt, setPrompt] = useState(
     'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
@@ -73,18 +85,35 @@ function Home() {
 
   const signedIn = !!session?.user
 
+  const refreshJobs = useCallback(async () => {
+    if (process.env['E2E_BYPASS_AUTH'] === '1') return
+    if (!session?.user) return
+    try {
+      const next = await listMyJobs({ data: { limit: 12 } })
+      setJobs(next)
+    } catch {
+      // listing is secondary — don't surface as primary error
+    }
+  }, [session?.user])
+
   const isRunning =
     !!workflowId &&
     status?.phase !== 'completed' &&
     status?.phase !== 'failed'
 
-  const applyStatus = useCallback((next: VideoWorkflowStatus | null) => {
-    if (!next) return
-    setStatus(next)
-    if (next.phase === 'failed' || next.error) {
-      setError(next.error ?? next.message)
-    }
-  }, [])
+  const applyStatus = useCallback(
+    (next: VideoWorkflowStatus | null) => {
+      if (!next) return
+      setStatus(next)
+      if (next.phase === 'failed' || next.error) {
+        setError(next.error ?? next.message)
+      }
+      if (next.phase === 'completed' || next.phase === 'failed') {
+        void refreshJobs()
+      }
+    },
+    [refreshJobs],
+  )
 
   // Real-time: JobRoom Durable Object WebSocket (no Temporal poll storm)
   useEffect(() => {
@@ -195,6 +224,7 @@ function Home() {
       }
       const { workflowId: id } = await startVideoWorkflow({ data: input })
       setWorkflowId(id)
+      void refreshJobs()
       setStatus({
         phase: enhancePrompt ? 'enhancing' : 'starting',
         prompt,
@@ -363,6 +393,62 @@ function Home() {
             )}
           </div>
         </form>
+
+        {signedIn && jobs.length > 0 && (
+          <section className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <h2 className="text-sm font-medium text-zinc-300">Recent videos</h2>
+            <ul className="mt-3 divide-y divide-zinc-800">
+              {jobs.map((job) => (
+                <li
+                  key={job.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-zinc-200">{job.prompt}</p>
+                    <p className="mt-0.5 font-mono text-xs text-zinc-600">
+                      {job.id}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs capitalize ${
+                        job.status === 'completed'
+                          ? 'bg-emerald-500/15 text-emerald-300'
+                          : job.status === 'failed'
+                            ? 'bg-red-500/15 text-red-300'
+                            : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {job.status}
+                    </span>
+                    {job.videoUrl ? (
+                      <a
+                        href={job.videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-violet-400 hover:text-violet-300"
+                      >
+                        Open
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs text-zinc-400 hover:text-zinc-200"
+                        onClick={() => {
+                          setWorkflowId(job.id)
+                          setStatus(null)
+                          setError(null)
+                        }}
+                      >
+                        Watch
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {(workflowId || error) && (
           <section className="mt-8 space-y-6">

@@ -54,11 +54,14 @@ E2E uses `@copilotkit/aimock` to mock Grok chat + Imagine video. Activities hono
 
 ## Environment
 
-`.env.local` (gitignored via `*.local`):
+`.env.local` (gitignored via `*.local`) + `.dev.vars` for workerd:
 
 ```bash
 XAI_API_KEY=xai-...
-DATABASE_URL=dev.db
+DATABASE_URL=postgresql://...@....pg.psdb.cloud:6432/postgres?sslmode=require
+BETTER_AUTH_SECRET=...        # openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3000
+EMAIL_MODE=console
 TEMPORAL_ADDRESS=localhost:7233
 TEMPORAL_NAMESPACE=default
 
@@ -76,9 +79,11 @@ STATUS_WEBHOOK_SECRET=...
 # TEMPORAL_TLS_KEY_PATH=...
 ```
 
-Wrangler secrets for production: `STATUS_WEBHOOK_SECRET`, `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`.
+Wrangler secrets for production: `DATABASE_URL`, `BETTER_AUTH_*`, `STATUS_WEBHOOK_SECRET`, `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`.
 
 Never put `XAI_API_KEY` in client code. Only activities / Node worker may call xAI.
+
+Schema: `bun run db:push` (needs PlanetScale role with CREATE on `public`).
 
 ## Project layout
 
@@ -89,8 +94,11 @@ src/
     JobRoom.ts            # Per-workflow status + WS hibernation (+ AI run storage)
   server/
     video.ts              # createServerFn: start via Temporal gateway
+    jobs.ts               # listMyJobs + Postgres video_job sync
     jobEvents.ts          # HMAC webhook + WS routing
+    videos.ts             # R2 persist + GET
     internalAuth.ts       # HMAC sign/verify
+  auth/                   # Better Auth email OTP
   routes/                 # TanStack Router UI
   temporal/
     types.ts              # Shared types + TASK_QUEUE (workflow-safe)
@@ -98,11 +106,13 @@ src/
     gateway.ts            # HTTP starter for the edge
     worker.ts             # Worker + gateway entrypoint
     workflows/            # Deterministic workflow code only
-    activities/           # Node I/O: TanStack AI, xAI, publishStatus
+    activities/           # Node I/O: TanStack AI, xAI, publishStatus, persistVideo
   persistence/
     jobRoomAdapter.ts     # TanStack AI generation store → JobRoom DO
-  db/                     # Drizzle scaffold (unused by video flow)
+  db/                     # Drizzle + Postgres (Better Auth + video_job index)
 wrangler.jsonc
+fly.toml                  # Node worker deploy (Fly.io)
+Dockerfile.worker
 ```
 
 ## Architecture rules (scale)

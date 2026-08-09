@@ -60,6 +60,22 @@ export async function handleJobEvents(
     updatedAt: parsed.updatedAt,
   })
 
+  // Keep Postgres job index in sync for "my videos" listing (not the live UX path)
+  const phase = parsed.status.phase
+  if (phase === 'completed' || phase === 'failed') {
+    const { syncVideoJobFromStatus } = await import('./jobs.ts')
+    const sync: {
+      workflowId: string
+      status: string
+      videoUrl?: string
+    } = {
+      workflowId: parsed.workflowId,
+      status: phase,
+    }
+    if (parsed.status.videoUrl) sync.videoUrl = parsed.status.videoUrl
+    await syncVideoJobFromStatus(sync)
+  }
+
   return Response.json(result)
 }
 

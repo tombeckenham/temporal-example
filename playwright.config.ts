@@ -29,6 +29,10 @@ export default defineConfig({
       ...process.env,
       E2E_BYPASS_AUTH: '1',
       EMAIL_MODE: 'console',
+      // Match e2e/global-setup E2E_SECRETS (workerd also reads .dev.vars)
+      TEMPORAL_STARTER_SECRET: 'dev-starter-secret-change-me',
+      TEMPORAL_STARTER_URL: `http://127.0.0.1:${E2E_PORTS.gateway}`,
+      STATUS_WEBHOOK_SECRET: 'dev-webhook-secret-change-me',
     },
   },
 })

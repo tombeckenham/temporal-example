@@ -74,13 +74,16 @@ bun run dev:all
 bun run deploy
 ```
 
-**Worker (Node)** — `Dockerfile.worker` or any host:
+**Worker (Node)** — Fly.io (`fly.toml`) or Docker:
 
 ```bash
 docker build -f Dockerfile.worker -t temporal-example-worker .
+# or: fly launch && fly secrets set ... && fly deploy
 ```
 
 Env for the Node worker: `XAI_API_KEY`, Temporal Cloud address/namespace/auth, `TEMPORAL_STARTER_SECRET`, `STATUS_WEBHOOK_URL`, `STATUS_WEBHOOK_SECRET`.
+
+Gateway rate limit: `TEMPORAL_START_RATE_MAX` (default 30 starts/minute per process).
 
 **Edge secrets** (`wrangler secret put`):
 

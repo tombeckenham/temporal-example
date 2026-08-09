@@ -12,11 +12,17 @@ interface StoredRow {
   updated_at: string
 }
 
+/** Re-check generating jobs if no notify arrives for this long (ms). */
+const STUCK_ALARM_MS = 2 * 60_000
+/** Stop rebroadcasting after this many alarms (abandoned jobs must not wake forever). */
+const STUCK_ALARM_MAX = 15
+
 /**
  * One Durable Object per video workflow.
  *
  * - Holds latest status in SQLite (source of truth for the UI)
  * - Accepts hibernating WebSockets and pushes status on notify()
+ * - Alarm rebroadcasts last status if a job looks stuck (capped)
  * - Scales horizontally: millions of jobs ⇒ millions of independent objects
  *
  * D1 is intentionally not used for live status — see plan storage section.
@@ -92,7 +98,64 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
       }
     }
 
+    await this.scheduleAlarmForPhase(payload.status.phase)
+
     return { accepted: true }
+  }
+
+  /**
+   * If a job stays in a non-terminal phase with no new notifies, rebroadcast
+   * last status so reconnecting clients recover. Capped so abandoned DOs sleep.
+   * Does not call Temporal (hot path stays free of gRPC).
+   */
+  override async alarm(): Promise<void> {
+    const row = this.readRow()
+    if (!row) {
+      await this.ctx.storage.deleteAlarm()
+      return
+    }
+
+    const status = JSON.parse(row.payload) as VideoWorkflowStatus
+    if (status.phase === 'completed' || status.phase === 'failed') {
+      await this.ctx.storage.deleteAlarm()
+      await this.ctx.storage.delete('alarmCount')
+      return
+    }
+
+    const prev = (await this.ctx.storage.get<number>('alarmCount')) ?? 0
+    const next = prev + 1
+    await this.ctx.storage.put('alarmCount', next)
+
+    const message = JSON.stringify({
+      type: 'status',
+      status,
+      updatedAt: row.updated_at,
+      stale: true,
+    })
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(message)
+      } catch {
+        // ignore broken sockets
+      }
+    }
+
+    if (next >= STUCK_ALARM_MAX) {
+      await this.ctx.storage.deleteAlarm()
+      return
+    }
+    await this.ctx.storage.setAlarm(Date.now() + STUCK_ALARM_MS)
+  }
+
+  private async scheduleAlarmForPhase(phase: VideoWorkflowStatus['phase']): Promise<void> {
+    if (phase === 'completed' || phase === 'failed') {
+      await this.ctx.storage.deleteAlarm()
+      await this.ctx.storage.delete('alarmCount')
+      return
+    }
+    // Fresh notify resets the stuck counter
+    await this.ctx.storage.put('alarmCount', 0)
+    await this.ctx.storage.setAlarm(Date.now() + STUCK_ALARM_MS)
   }
 
   /** RPC: read last known status (for HTTP fallback / hydrate). */

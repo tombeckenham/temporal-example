@@ -1,0 +1,40 @@
+# Temporal worker + HTTP gateway (Node — not Cloudflare Workers)
+# Deploy: fly launch --no-deploy && fly secrets set ... && fly deploy
+#
+# Required secrets:
+#   XAI_API_KEY
+#   TEMPORAL_ADDRESS          (e.g. <ns>.<account>.tmprl.cloud:7233)
+#   TEMPORAL_NAMESPACE
+#   TEMPORAL_API_KEY          (or TEMPORAL_TLS_CERT_PATH / KEY via volume)
+#   TEMPORAL_STARTER_SECRET
+#   STATUS_WEBHOOK_URL        (https://your-worker.workers.dev)
+#   STATUS_WEBHOOK_SECRET
+
+app = "temporal-example-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.worker"
+
+[env]
+  TEMPORAL_GATEWAY_PORT = "8788"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8788
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

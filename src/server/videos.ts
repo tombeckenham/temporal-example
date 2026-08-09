@@ -62,6 +62,14 @@ export async function handleVideoPersist(
     updatedAt: new Date().toISOString(),
   })
 
+  const { syncVideoJobFromStatus } = await import('./jobs.ts')
+  await syncVideoJobFromStatus({
+    workflowId,
+    status: 'completed',
+    videoUrl: publicUrl.toString(),
+    r2Key: key,
+  })
+
   return Response.json({ key, videoUrl: publicUrl.toString() })
 }
 
