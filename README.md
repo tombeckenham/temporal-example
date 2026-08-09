@@ -42,15 +42,21 @@ Also put the same auth/DB secrets in `.dev.vars` for the Cloudflare Vite / worke
 
 ### Database schema
 
-PlanetScale API roles often **cannot CREATE on `public`**. Use a role with DDL, then:
+PlanetScale **API** roles (`pscale_api_*`) have `USAGE` on `public` but **not** `CREATE`.  
+Create a password with the **admin** role in the [PlanetScale dashboard](https://app.planetscale.com) (Roles → New password → Admin), put that URL in `DATABASE_URL` **without quotes**, then:
 
 ```bash
 bun run db:push
-# or apply SQL:
-# psql "$DATABASE_URL" -f drizzle/0000_long_mauler.sql
+# or: psql "$DATABASE_URL" -f drizzle/0000_long_mauler.sql
 ```
 
-If you see `permission denied for schema public`, create an **admin** Postgres role in the PlanetScale dashboard and use that `DATABASE_URL`.
+As the default `postgres` role you can also grant your API role DDL:
+
+```sql
+GRANT CREATE ON SCHEMA public TO "pscale_api_…";
+```
+
+Optional production: Cloudflare **Hyperdrive** in front of PlanetScale (see `wrangler.jsonc` comment).
 
 ## Run locally
 

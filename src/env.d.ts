@@ -5,6 +5,8 @@
 declare namespace Cloudflare {
   interface Env {
     DATABASE_URL?: string
+    /** Optional Hyperdrive binding — preferred over raw DATABASE_URL in production */
+    HYPERDRIVE?: Hyperdrive
     BETTER_AUTH_SECRET?: string
     BETTER_AUTH_URL?: string
     EMAIL_FROM?: string

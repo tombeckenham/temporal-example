@@ -34,8 +34,16 @@
       "name": "EMAIL",
     },
   ],
+  // Optional Hyperdrive (create with: wrangler hyperdrive create …)
+  // Uncomment after creating a config; edge will prefer HYPERDRIVE over DATABASE_URL.
+  // "hyperdrive": [
+  //   {
+  //     "binding": "HYPERDRIVE",
+  //     "id": "<hyperdrive-config-id>",
+  //   },
+  // ],
   // Secrets (wrangler secret put):
-  //   DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL,
+  //   DATABASE_URL (if not using Hyperdrive), BETTER_AUTH_SECRET, BETTER_AUTH_URL,
   //   STATUS_WEBHOOK_SECRET, TEMPORAL_STARTER_URL, TEMPORAL_STARTER_SECRET,
   //   EMAIL_FROM, EMAIL_MODE
   "vars": {
