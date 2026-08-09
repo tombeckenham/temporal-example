@@ -1,5 +1,6 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { sha256Hex, verifyBodySignature } from './internalAuth.ts'
+import { syncVideoJobFromStatus } from './jobSync.ts'
 
 /** Reject uploads whose timestamp is further than this from now (replay window). */
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60_000
@@ -75,7 +76,6 @@ export async function handleVideoPersist(
     updatedAt: new Date().toISOString(),
   })
 
-  const { syncVideoJobFromStatus } = await import('./jobs.ts')
   await syncVideoJobFromStatus({
     workflowId,
     status: 'completed',

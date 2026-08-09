@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
+import { getAuth } from '../auth/server.ts'
 import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
 
 export type PublicSession = {
@@ -10,7 +11,7 @@ export type PublicSession = {
   }
 } | null
 
-export const getSession = createServerFn({ method: 'GET' }).handler(
+export const getSessionFn = createServerFn({ method: 'GET' }).handler(
   async (): Promise<PublicSession> => {
     if (isAuthBypassed()) {
       return {
@@ -21,8 +22,7 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
         },
       }
     }
-    const { auth } = await import('../auth/server.ts')
-    const session = await auth.api.getSession({
+    const session = await getAuth().api.getSession({
       headers: getRequest().headers,
     })
     if (!session?.user) return null
@@ -35,9 +35,3 @@ export const getSession = createServerFn({ method: 'GET' }).handler(
     }
   },
 )
-
-/** Resolve session from a Request (API / server handlers). */
-export async function sessionFromRequest(request: Request) {
-  const { auth } = await import('../auth/server.ts')
-  return auth.api.getSession({ headers: request.headers })
-}

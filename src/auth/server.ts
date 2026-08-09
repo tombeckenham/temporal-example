@@ -4,10 +4,12 @@ import { emailOTP } from 'better-auth/plugins'
 import { getDb } from '../db/index.ts'
 import { authSchema } from '../db/schema.ts'
 import { newId } from '../lib/id.ts'
+import { getEnv } from '../server/env.ts'
+import { perRequest } from '../server/requestScope.ts'
 import { sendOtpEmail } from './email.ts'
 
 function authSecret(): string {
-  const secret = process.env['BETTER_AUTH_SECRET']
+  const secret = getEnv()['BETTER_AUTH_SECRET']
   if (!secret || secret.length < 16) {
     // Dev-server fallback so the app can boot; production builds compile
     // import.meta.env.DEV to false and always require a real secret
@@ -23,7 +25,7 @@ function authSecret(): string {
 }
 
 function authBaseUrl(): string {
-  return process.env['BETTER_AUTH_URL'] ?? 'http://localhost:3000'
+  return getEnv()['BETTER_AUTH_URL'] ?? 'http://localhost:3000'
 }
 
 function createAuth() {
@@ -58,21 +60,12 @@ function createAuth() {
 
 type AuthInstance = ReturnType<typeof createAuth>
 
-let _auth: AuthInstance | undefined
-
-/** Lazy Better Auth — avoids reading secrets at import time on Workers. */
-export function getAuth(): AuthInstance {
-  if (!_auth) {
-    _auth = createAuth()
-  }
-  return _auth
-}
-
-/** Convenience alias used by route handlers */
-export const auth = new Proxy(Object.create(null) as AuthInstance, {
-  get(_t, prop, receiver) {
-    return Reflect.get(getAuth(), prop, receiver) as unknown
-  },
-})
+/**
+ * Better Auth, built once per request. It cannot be a module-level singleton:
+ * the Drizzle adapter captures the client it is handed at construction, and a
+ * client from an earlier request is a dead socket on Workers. Construction is
+ * pure CPU (plugin + route wiring), so per-request costs no I/O.
+ */
+export const getAuth = perRequest(createAuth)
 
 export type Session = AuthInstance['$Infer']['Session']

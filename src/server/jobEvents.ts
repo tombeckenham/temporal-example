@@ -1,5 +1,6 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { verifyBodySignature } from './internalAuth.ts'
+import { syncVideoJobFromStatus } from './jobSync.ts'
 
 export interface JobEventBody {
   workflowId: string
@@ -63,7 +64,6 @@ export async function handleJobEvents(
   // Keep Postgres job index in sync for "my videos" listing (not the live UX path)
   const phase = parsed.status.phase
   if (phase === 'completed' || phase === 'failed') {
-    const { syncVideoJobFromStatus } = await import('./jobs.ts')
     const sync: {
       workflowId: string
       status: string

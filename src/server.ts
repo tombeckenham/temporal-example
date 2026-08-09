@@ -8,8 +8,8 @@
  */
 import handler from '@tanstack/react-start/server-entry'
 import { JobRoom } from './durable-objects/JobRoom.ts'
-import { setCfEnv } from './server/cfEnv.ts'
 import { authorizeJobAccess } from './server/jobAccess.ts'
+import { runInRequestScope } from './server/requestScope.ts'
 import {
   handleJobEvents,
   handleJobStatusHttp,
@@ -79,58 +79,49 @@ const internalRoutes: Array<{
   { path: '/internal/videos', handler: handleVideoPersist },
 ]
 
+/**
+ * Vars and secrets reach server code through process.env (populated by
+ * `nodejs_compat`) and object bindings through `cloudflare:workers` — see
+ * server/cfEnv.ts. Nothing is copied into module scope here: state set during
+ * one request is shared with every other request in the isolate.
+ */
+async function handleRequest(
+  request: Request,
+  env: Cloudflare.Env,
+): Promise<Response> {
+  const url = new URL(request.url)
+
+  if (request.method === 'POST') {
+    for (const route of internalRoutes) {
+      if (url.pathname === route.path) {
+        return route.handler(request, env)
+      }
+    }
+  }
+
+  for (const route of jobRoutes) {
+    if (request.method !== route.method) continue
+    const workflowId = matchJobPath(url.pathname, route.prefix)
+    if (!workflowId) continue
+    if (!WORKFLOW_ID_RE.test(workflowId)) {
+      return new Response('Invalid workflow id', { status: 400 })
+    }
+    const denied = await authorizeJobAccess(request, workflowId)
+    if (denied) return denied
+    return route.handler(request, env, workflowId)
+  }
+
+  return handler.fetch(request)
+}
+
 export default {
-  async fetch(
+  fetch(
     request: Request,
     env: Cloudflare.Env,
     _ctx: ExecutionContext,
   ): Promise<Response> {
-    const url = new URL(request.url)
-
-    // Non-string bindings (EMAIL, …) for code outside this handler
-    setCfEnv(env)
-
-    // Bindings → process.env so Better Auth / Drizzle see secrets on Workers
-    if (env.HYPERDRIVE?.connectionString) {
-      process.env['DATABASE_URL'] = env.HYPERDRIVE.connectionString
-    } else if (env.DATABASE_URL) {
-      process.env['DATABASE_URL'] = env.DATABASE_URL
-    }
-    if (env.BETTER_AUTH_SECRET)
-      process.env['BETTER_AUTH_SECRET'] = env.BETTER_AUTH_SECRET
-    if (env.BETTER_AUTH_URL)
-      process.env['BETTER_AUTH_URL'] = env.BETTER_AUTH_URL
-    if (env.EMAIL_FROM) process.env['EMAIL_FROM'] = env.EMAIL_FROM
-    if (env.EMAIL_MODE) process.env['EMAIL_MODE'] = env.EMAIL_MODE
-    if (env.STATUS_WEBHOOK_SECRET)
-      process.env['STATUS_WEBHOOK_SECRET'] = env.STATUS_WEBHOOK_SECRET
-    if (env.TEMPORAL_STARTER_URL)
-      process.env['TEMPORAL_STARTER_URL'] = env.TEMPORAL_STARTER_URL
-    if (env.TEMPORAL_STARTER_SECRET)
-      process.env['TEMPORAL_STARTER_SECRET'] = env.TEMPORAL_STARTER_SECRET
-    if (env.E2E_BYPASS_AUTH)
-      process.env['E2E_BYPASS_AUTH'] = env.E2E_BYPASS_AUTH
-
-    if (request.method === 'POST') {
-      for (const route of internalRoutes) {
-        if (url.pathname === route.path) {
-          return route.handler(request, env)
-        }
-      }
-    }
-
-    for (const route of jobRoutes) {
-      if (request.method !== route.method) continue
-      const workflowId = matchJobPath(url.pathname, route.prefix)
-      if (!workflowId) continue
-      if (!WORKFLOW_ID_RE.test(workflowId)) {
-        return new Response('Invalid workflow id', { status: 400 })
-      }
-      const denied = await authorizeJobAccess(request, workflowId)
-      if (denied) return denied
-      return route.handler(request, env, workflowId)
-    }
-
-    return handler.fetch(request)
+    // Every getDb() / getAuth() below this point shares one instance, and that
+    // instance dies with the request — Workers rejects I/O created by another.
+    return runInRequestScope(() => handleRequest(request, env))
   },
 }

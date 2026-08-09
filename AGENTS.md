@@ -169,6 +169,57 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 - Check if localhost is already running before starting `bun dev`
 - Typecheck: `bun run typecheck` (or `bun tsgo --noEmit` if available)
 
+### Naming
+
+- **`createServerFn` results end in `Fn`** — `getSessionFn`, `listMyJobsFn`,
+  `startVideoWorkflowFn`. The call site reads as a network round trip, not a
+  local helper. Same for `createIsomorphicFn`.
+- `createMiddleware` results end in `Middleware` (`authMiddleware`), and
+  `createServerOnlyFn` results take no suffix (`getServerEnv`, `getCfBindings`).
+
+### Static imports only
+
+- **No `await import(...)`** in app code. Imports go at the top of the file, so
+  the module graph is visible to typecheck, lint and the bundler.
+- Dynamic import is allowed only for browser code-splitting of a genuinely
+  heavy client-side library, and in tests that need `vi.doMock` ordering.
+- Dynamic import is **not** the tool for keeping server code out of the client
+  bundle — module boundaries are. A module that a route component imports must
+  export *only* server functions and types: TanStack Start compiles away
+  `.handler()` bodies, but a plain exported function keeps its imports in the
+  client graph and drags Postgres/Better Auth into the browser bundle. That is
+  why `syncVideoJobFromStatus` lives in `server/jobSync.ts` rather than
+  alongside `listMyJobsFn` in `server/jobs.ts`.
+- Guard rail: `dist/client` must stay free of `drizzle`, `postgres` and
+  server-side `better-auth` after `bun run build` (~400K).
+
+### Request-scoped state (Workers)
+
+- **Never cache anything that owns I/O in module scope.** Workers rejects use
+  of a socket or stream created by one request from another request's handler
+  ("Cannot perform I/O on behalf of a different request"), so a module-level
+  Postgres client fails on the *second* request in an isolate.
+- `getDb()` and `getAuth()` are wrapped in `perRequest()`
+  (`server/requestScope.ts`); the Workers entry opens the scope once per
+  request with `runInRequestScope()`.
+- Better Auth cannot be a module singleton here: its Drizzle adapter captures
+  the client it is constructed with.
+- Env: read `getEnv()` from `server/env.ts` — the Workers env carries vars,
+  secrets *and* object bindings (`EMAIL`, `HYPERDRIVE`), so it is a superset of
+  `process.env`. Never copy it into a module-level variable. The Node Temporal
+  worker is a separate process and reads `process.env` directly.
+
+### Database access
+
+- **Handlers never query with a hand-written user filter.** `authMiddleware`
+  puts a `context.scopedDb` on the request; use `context.scopedDb.jobs.*`, where
+  the `userId` predicate is applied in one place (`db/scoped/jobs.ts`).
+- Only `db/scoped/*`, `db/system.ts` and `auth/server.ts` may import `getDb`
+  — enforced by `no-restricted-imports` in `eslint.config.js`.
+- `db/system.ts` holds the deliberately unscoped writes: the internal webhook
+  path has no session, and is authorized by HMAC signature instead. Anything
+  with a session user belongs in the scoped layer.
+
 ## Common pitfalls
 
 1. **Worker not running** → workflows stay in Running with no progress

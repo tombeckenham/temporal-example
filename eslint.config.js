@@ -42,6 +42,56 @@ export default [
     },
   },
   {
+    // Boundaries that are easy to breach by accident and expensive when broken.
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/db/index.ts', '#/db/index.ts'],
+              message:
+                'Import createScopedDb from db/scoped.ts so queries are filtered by userId. Only db/scoped/*, db/system.ts and auth/server.ts may reach getDb directly.',
+            },
+            {
+              // Only the `env` export — DurableObject/WorkerEntrypoint are fine.
+              group: ['cloudflare:workers'],
+              importNames: ['env'],
+              message:
+                'Read bindings via getEnv() from server/env.ts rather than importing env directly, so there is one place that owns Workers env access.',
+            },
+            {
+              group: ['@temporalio/*'],
+              message:
+                'The edge Worker must never import @temporalio/* — talk to the Node worker over the HTTP gateway (server/video.ts).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The db layer itself, and Better Auth's adapter, need the raw client.
+    files: [
+      'src/db/index.ts',
+      'src/db/scoped/*.ts',
+      'src/db/system.ts',
+      'src/auth/server.ts',
+    ],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
+    // env.ts is the single place allowed to touch the Workers env directly.
+    files: ['src/server/env.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
+    // The Temporal worker/workflows are the Node side — @temporalio lives here.
+    files: ['src/temporal/**/*.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
     ignores: ['eslint.config.js', 'prettier.config.js'],
   },
 ]

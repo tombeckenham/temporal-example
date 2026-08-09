@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authClient } from '../auth/client.ts'
-import { listMyJobs } from '../server/jobs.ts'
+import { listMyJobsFn } from '../server/jobs.ts'
 import type { VideoJobRow } from '../server/jobs.ts'
-import { getSession } from '../server/session.ts'
+import { getSessionFn } from '../server/session.ts'
 import type { PublicSession } from '../server/session.ts'
-import { startVideoWorkflow } from '../server/video.ts'
+import { startVideoWorkflowFn } from '../server/video.ts'
 import type {
   GenerateVideoInput,
   VideoPhase,
@@ -18,11 +18,11 @@ export const Route = createFileRoute('/')({
   loader: async () => {
     // E2E bypass is handled inside the server functions — this loader also
     // runs in the browser, where process.env does not exist.
-    const session = await getSession()
+    const session = await getSessionFn()
     let jobs: VideoJobRow[] = []
     if (session?.user) {
       try {
-        jobs = await listMyJobs({ data: { limit: 12 } })
+        jobs = await listMyJobsFn({ data: { limit: 12 } })
       } catch {
         jobs = []
       }
@@ -84,7 +84,7 @@ function Home() {
   const refreshJobs = useCallback(async () => {
     if (!session?.user) return
     try {
-      const next = await listMyJobs({ data: { limit: 12 } })
+      const next = await listMyJobsFn({ data: { limit: 12 } })
       setJobs(next)
     } catch {
       // listing is secondary — don't surface as primary error
@@ -212,7 +212,7 @@ function Home() {
         size,
         enhancePrompt,
       }
-      const { workflowId: id } = await startVideoWorkflow({ data: input })
+      const { workflowId: id } = await startVideoWorkflowFn({ data: input })
       setWorkflowId(id)
       void refreshJobs()
       setStatus({

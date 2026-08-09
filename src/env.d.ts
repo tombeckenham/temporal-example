@@ -13,6 +13,8 @@ declare namespace Cloudflare {
     EMAIL_MODE?: string
     STATUS_WEBHOOK_SECRET?: string
     TEMPORAL_STARTER_URL?: string
+    /** Fallback for TEMPORAL_STARTER_URL (local gateway) */
+    TEMPORAL_GATEWAY_URL?: string
     TEMPORAL_STARTER_SECRET?: string
     E2E_BYPASS_AUTH?: string
     /** Cloudflare Email Service send binding */
