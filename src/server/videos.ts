@@ -1,10 +1,14 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
-import { verifyBodySignature } from './internalAuth.ts'
+import { sha256Hex, verifyBodySignature } from './internalAuth.ts'
+
+/** Reject uploads whose timestamp is further than this from now (replay window). */
+const MAX_TIMESTAMP_SKEW_MS = 5 * 60_000
 
 /**
  * POST /internal/videos — Temporal worker uploads completed video bytes.
- * Headers: X-Signature, X-Workflow-Id, Content-Type
+ * Headers: X-Signature, X-Timestamp, X-Workflow-Id, Content-Type
  * Body: raw video bytes
+ * Signature covers workflowId + timestamp + SHA-256(body) + content-type.
  */
 export async function handleVideoPersist(
   request: Request,
@@ -24,11 +28,20 @@ export async function handleVideoPersist(
     return new Response('X-Workflow-Id required', { status: 400 })
   }
 
+  const timestamp = request.headers.get('X-Timestamp')
+  const ts = Number(timestamp)
+  if (
+    !timestamp ||
+    !Number.isFinite(ts) ||
+    Math.abs(Date.now() - ts) > MAX_TIMESTAMP_SKEW_MS
+  ) {
+    return new Response('Invalid or stale timestamp', { status: 401 })
+  }
+
   const body = await request.arrayBuffer()
-  // Sign over workflowId + byte length so we don't re-hash huge bodies twice incorrectly;
-  // worker signs the same string.
   const contentType = request.headers.get('content-type') ?? 'video/mp4'
-  const signPayload = `${workflowId}:${body.byteLength}:${contentType}`
+  const bodyHash = await sha256Hex(body)
+  const signPayload = `${workflowId}:${timestamp}:${bodyHash}:${contentType}`
   const signature = request.headers.get('X-Signature')
   const ok = await verifyBodySignature(secret, signPayload, signature)
   if (!ok) {
@@ -73,7 +86,11 @@ export async function handleVideoPersist(
   return Response.json({ key, videoUrl: publicUrl.toString() })
 }
 
-/** GET /api/videos/:workflowId — stream from R2 */
+/**
+ * GET /api/videos/:workflowId — stream from R2.
+ * Ownership is enforced by the caller (server.ts → authorizeJobAccess), so
+ * responses must stay private: shared caches would leak videos across users.
+ */
 export async function handleVideoGet(
   env: Cloudflare.Env,
   workflowId: string,
@@ -86,6 +103,6 @@ export async function handleVideoGet(
   const headers = new Headers()
   object.writeHttpMetadata(headers)
   headers.set('etag', object.httpEtag)
-  headers.set('cache-control', 'public, max-age=31536000, immutable')
+  headers.set('cache-control', 'private, max-age=3600')
   return new Response(object.body, { headers })
 }

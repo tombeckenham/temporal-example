@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
 
 export type VideoJobRow = {
   id: string
@@ -13,14 +14,14 @@ export type VideoJobRow = {
 }
 
 async function requireUserId(): Promise<string> {
-  if (process.env['E2E_BYPASS_AUTH'] === '1') {
-    return 'e2e-user'
+  if (isAuthBypassed()) {
+    return E2E_USER_ID
   }
   const { auth } = await import('../auth/server.ts')
   const session = await auth.api.getSession({
     headers: getRequest().headers,
   })
-  if (!session?.user?.id) {
+  if (!session?.user.id) {
     throw new Error('Sign in required')
   }
   return session.user.id
@@ -32,7 +33,7 @@ async function requireUserId(): Promise<string> {
 export const listMyJobs = createServerFn({ method: 'GET' })
   .validator(z.object({ limit: z.number().int().min(1).max(50).optional() }))
   .handler(async ({ data }): Promise<VideoJobRow[]> => {
-    if (process.env['E2E_BYPASS_AUTH'] === '1') {
+    if (isAuthBypassed()) {
       return []
     }
 
@@ -76,7 +77,7 @@ export async function syncVideoJobFromStatus(input: {
   r2Key?: string
 }): Promise<void> {
   if (!process.env['DATABASE_URL']) return
-  if (process.env['E2E_BYPASS_AUTH'] === '1') return
+  if (isAuthBypassed()) return
 
   try {
     const { getDb } = await import('../db/index.ts')

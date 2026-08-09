@@ -18,22 +18,27 @@ export interface GenerationRunRecord {
 
 /** Shape expected by JobRoom RPC for persistence helpers */
 export type JobRoomPersistenceStub = {
-  putGenerationRun(
+  putGenerationRun: (
     runId: string,
     threadId: string,
     record: unknown,
-  ): Promise<void>
-  getGenerationRun(runId: string): Promise<unknown | null>
-  getLatestGenerationRun(threadId: string): Promise<unknown | null>
+  ) => Promise<void>
+  getGenerationRun: (runId: string) => Promise<unknown | null>
+  getLatestGenerationRun: (threadId: string) => Promise<unknown | null>
 }
 
-export function createJobRoomGenerationStore(getStub: (threadId: string) => JobRoomPersistenceStub) {
+export function createJobRoomGenerationStore(
+  getStub: (threadId: string) => JobRoomPersistenceStub,
+) {
   return {
     async put(run: GenerationRunRecord): Promise<void> {
       const stub = getStub(run.threadId)
       await stub.putGenerationRun(run.runId, run.threadId, run)
     },
-    async get(runId: string, threadId: string): Promise<GenerationRunRecord | null> {
+    async get(
+      runId: string,
+      threadId: string,
+    ): Promise<GenerationRunRecord | null> {
       const stub = getStub(threadId)
       const record = await stub.getGenerationRun(runId)
       return (record as GenerationRunRecord | null) ?? null

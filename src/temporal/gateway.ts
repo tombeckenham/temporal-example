@@ -13,6 +13,7 @@
  *   → Temporal query snapshot (ops / fallback; product UI uses JobRoom WS)
  */
 import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WorkflowNotFoundError } from '@temporalio/client'
 import { getTemporalClient } from './client.ts'
 import type {
@@ -42,17 +43,15 @@ function allowStart(): boolean {
   return true
 }
 
-function readBearer(req: { headers: { authorization?: string | undefined } }): string | null {
+function readBearer(req: {
+  headers: { authorization?: string | undefined }
+}): string | null {
   const header = req.headers.authorization
   if (!header?.startsWith('Bearer ')) return null
   return header.slice('Bearer '.length)
 }
 
-function json(
-  res: import('node:http').ServerResponse,
-  status: number,
-  body: unknown,
-): void {
+function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
     'content-type': 'application/json',
@@ -87,11 +86,9 @@ function isGenerateInput(value: unknown): value is GenerateVideoInput & {
   return true
 }
 
-async function readJson(
-  req: import('node:http').IncomingMessage,
-): Promise<unknown> {
+async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
-  for await (const chunk of req) {
+  for await (const chunk of req as AsyncIterable<Buffer | string>) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
   }
   const raw = Buffer.concat(chunks).toString('utf8')
@@ -131,7 +128,13 @@ export function startTemporalGateway(port = DEFAULT_PORT): void {
           return
         }
 
-        const body = await readJson(req)
+        let body: unknown
+        try {
+          body = await readJson(req)
+        } catch {
+          json(res, 400, { error: 'Invalid JSON body' })
+          return
+        }
         if (!isGenerateInput(body)) {
           json(res, 400, { error: 'Invalid start payload' })
           return
@@ -155,9 +158,7 @@ export function startTemporalGateway(port = DEFAULT_PORT): void {
         return
       }
 
-      const statusMatch = url.pathname.match(
-        /^\/workflows\/([^/]+)\/status$/,
-      )
+      const statusMatch = url.pathname.match(/^\/workflows\/([^/]+)\/status$/)
       if (req.method === 'GET' && statusMatch) {
         const workflowId = statusMatch[1]
         if (!workflowId) {

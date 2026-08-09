@@ -9,8 +9,10 @@ import { sendOtpEmail } from './email.ts'
 function authSecret(): string {
   const secret = process.env['BETTER_AUTH_SECRET']
   if (!secret || secret.length < 16) {
-    // Dev fallback so the app can boot; set a real secret in .env.local / .dev.vars
-    if (process.env['NODE_ENV'] !== 'production') {
+    // Dev-server fallback so the app can boot; production builds compile
+    // import.meta.env.DEV to false and always require a real secret
+    // (NODE_ENV is unreliable on the Workers runtime — often unset).
+    if (import.meta.env.DEV) {
       return 'dev-only-better-auth-secret-change-me'
     }
     throw new Error(
@@ -67,9 +69,9 @@ export function getAuth(): AuthInstance {
 }
 
 /** Convenience alias used by route handlers */
-export const auth = new Proxy({} as AuthInstance, {
+export const auth = new Proxy(Object.create(null) as AuthInstance, {
   get(_t, prop, receiver) {
-    return Reflect.get(getAuth(), prop, receiver)
+    return Reflect.get(getAuth(), prop, receiver) as unknown
   },
 })
 

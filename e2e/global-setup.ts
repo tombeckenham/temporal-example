@@ -7,7 +7,8 @@
  * Uses the same ports as local docs (gateway :8788, app :3000) so edge
  * `.dev.vars` secrets match. If those ports are busy, stop the other stack first.
  */
-import { type ChildProcess, execSync, spawn } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { LLMock } from '@copilotkit/aimock'
@@ -64,10 +65,10 @@ function spawnLogged(
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd: process.cwd(),
   })
-  child.stdout?.on('data', (buf: Buffer) => {
+  child.stdout.on('data', (buf: Buffer) => {
     process.stdout.write(`[${label}] ${buf.toString()}`)
   })
-  child.stderr?.on('data', (buf: Buffer) => {
+  child.stderr.on('data', (buf: Buffer) => {
     process.stderr.write(`[${label}] ${buf.toString()}`)
   })
   child.on('exit', (code, signal) => {
@@ -203,18 +204,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       'Enhanced e2e prompt: a cinematic rocket launch with golden-hour light and slow camera push-in',
   })
 
-  mock.onVideo(
-    /.*/,
-    {
-      video: {
-        id: 'vid_e2e',
-        status: 'completed',
-        url: 'https://example.com/e2e-video.mp4',
-        duration: 5,
-      },
+  mock.onVideo(/.*/, {
+    video: {
+      id: 'vid_e2e',
+      status: 'completed',
+      url: 'https://example.com/e2e-video.mp4',
+      duration: 5,
     },
-    { model: 'grok-imagine-video' },
-  )
+  })
 
   await mock.start()
   console.log(`[e2e] AIMock listening on ${mock.url}`)

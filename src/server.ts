@@ -8,6 +8,8 @@
  */
 import handler from '@tanstack/react-start/server-entry'
 import { JobRoom } from './durable-objects/JobRoom.ts'
+import { setCfEnv } from './server/cfEnv.ts'
+import { authorizeJobAccess } from './server/jobAccess.ts'
 import {
   handleJobEvents,
   handleJobStatusHttp,
@@ -17,10 +19,7 @@ import { handleVideoGet, handleVideoPersist } from './server/videos.ts'
 
 export { JobRoom }
 
-function matchJobPath(
-  pathname: string,
-  prefix: string,
-): string | null {
+function matchJobPath(pathname: string, prefix: string): string | null {
   if (!pathname.startsWith(prefix)) return null
   const rest = pathname.slice(prefix.length)
   const workflowId = rest.split('/')[0]
@@ -35,6 +34,9 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url)
 
+    // Non-string bindings (EMAIL, …) for code outside this handler
+    setCfEnv(env)
+
     // Bindings → process.env so Better Auth / Drizzle see secrets on Workers
     if (env.HYPERDRIVE?.connectionString) {
       process.env['DATABASE_URL'] = env.HYPERDRIVE.connectionString
@@ -43,7 +45,8 @@ export default {
     }
     if (env.BETTER_AUTH_SECRET)
       process.env['BETTER_AUTH_SECRET'] = env.BETTER_AUTH_SECRET
-    if (env.BETTER_AUTH_URL) process.env['BETTER_AUTH_URL'] = env.BETTER_AUTH_URL
+    if (env.BETTER_AUTH_URL)
+      process.env['BETTER_AUTH_URL'] = env.BETTER_AUTH_URL
     if (env.EMAIL_FROM) process.env['EMAIL_FROM'] = env.EMAIL_FROM
     if (env.EMAIL_MODE) process.env['EMAIL_MODE'] = env.EMAIL_MODE
     if (env.STATUS_WEBHOOK_SECRET)
@@ -65,16 +68,22 @@ export default {
 
     const videoId = matchJobPath(url.pathname, '/api/videos/')
     if (videoId && request.method === 'GET') {
+      const denied = await authorizeJobAccess(request, videoId)
+      if (denied) return denied
       return handleVideoGet(env, videoId)
     }
 
     const wsJobId = matchJobPath(url.pathname, '/ws/jobs/')
     if (wsJobId) {
+      const denied = await authorizeJobAccess(request, wsJobId)
+      if (denied) return denied
       return handleJobWebSocket(request, env, wsJobId)
     }
 
     const apiJobId = matchJobPath(url.pathname, '/api/jobs/')
     if (apiJobId && request.method === 'GET') {
+      const denied = await authorizeJobAccess(request, apiJobId)
+      if (denied) return denied
       return handleJobStatusHttp(env, apiJobId)
     }
 

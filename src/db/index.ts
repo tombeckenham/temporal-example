@@ -12,7 +12,8 @@ import * as schema from './schema.ts'
 function resolveDatabaseUrl(): string {
   // Hyperdrive injects a local connection string on Workers
   const hyperdrive =
-    typeof process.env['CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING'] === 'string'
+    typeof process.env['CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING'] ===
+    'string'
       ? process.env['CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING']
       : undefined
   const url = process.env['DATABASE_URL'] ?? hyperdrive
@@ -45,8 +46,11 @@ export function getDb() {
 }
 
 /** @deprecated use getDb() — lazy so import does not require DATABASE_URL at build time */
-export const db = new Proxy({} as ReturnType<typeof createClient>, {
-  get(_target, prop, receiver) {
-    return Reflect.get(getDb(), prop, receiver)
+export const db = new Proxy(
+  Object.create(null) as ReturnType<typeof createClient>,
+  {
+    get(_target, prop, receiver) {
+      return Reflect.get(getDb(), prop, receiver) as unknown
+    },
   },
-})
+)

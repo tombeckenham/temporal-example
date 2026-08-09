@@ -10,9 +10,7 @@ export interface PublishStatusInput {
  * Activity: push workflow status to the Cloudflare JobRoom via HMAC webhook.
  * Product UI reads JobRoom over WebSocket — it does not poll Temporal.
  */
-export async function publishStatus(
-  input: PublishStatusInput,
-): Promise<void> {
+export async function publishStatus(input: PublishStatusInput): Promise<void> {
   const baseUrl = process.env['STATUS_WEBHOOK_URL']
   const secret = process.env['STATUS_WEBHOOK_SECRET']
 
@@ -26,7 +24,9 @@ export async function publishStatus(
     return
   }
   if (!secret) {
-    throw new Error('STATUS_WEBHOOK_SECRET is required when STATUS_WEBHOOK_URL is set')
+    throw new Error(
+      'STATUS_WEBHOOK_SECRET is required when STATUS_WEBHOOK_URL is set',
+    )
   }
 
   const body = JSON.stringify({

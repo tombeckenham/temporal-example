@@ -16,15 +16,15 @@ A **minimal AI video generation demo** that teaches **Temporal workflows** on **
 
 Stack:
 
-| Layer | Tech |
-| --- | --- |
-| App | TanStack Start + Cloudflare Vite plugin (Workers) |
-| Real-time | Durable Objects (`JobRoom`) + WebSocket hibernation |
-| AI | TanStack AI (`@tanstack/ai`, `@tanstack/ai-grok`, `@tanstack/ai-persistence`) |
-| Video engine | Grok Imagine via xAI API |
-| Orchestration | Temporal TypeScript SDK + **Temporal Cloud** (or local for dev) |
-| Worker host | **Node process** (not CF Workers) — Fly/Render/local |
-| Package manager | Bun |
+| Layer           | Tech                                                                          |
+| --------------- | ----------------------------------------------------------------------------- |
+| App             | TanStack Start + Cloudflare Vite plugin (Workers)                             |
+| Real-time       | Durable Objects (`JobRoom`) + WebSocket hibernation                           |
+| AI              | TanStack AI (`@tanstack/ai`, `@tanstack/ai-grok`, `@tanstack/ai-persistence`) |
+| Video engine    | Grok Imagine via xAI API                                                      |
+| Orchestration   | Temporal TypeScript SDK + **Temporal Cloud** (or local for dev)               |
+| Worker host     | **Node process** (not CF Workers) — Fly/Render/local                          |
+| Package manager | Bun                                                                           |
 
 ## Commands
 
@@ -50,7 +50,6 @@ Typecheck: `bun run typecheck` (`tsc --noEmit`).
 
 E2E uses `@copilotkit/aimock` to mock Grok chat + Imagine video. Activities honor
 `XAI_BASE_URL` so the worker talks to AIMock instead of `api.x.ai`.
-
 
 ## Environment
 

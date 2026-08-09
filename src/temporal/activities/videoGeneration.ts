@@ -27,7 +27,9 @@ export interface PollVideoJobResult {
  * Does NOT wait for completion — that is polled in a separate activity so the
  * workflow can sleep between polls (durable, replay-safe).
  */
-export async function startVideoJob(input: StartVideoJobInput): Promise<string> {
+export async function startVideoJob(
+  input: StartVideoJobInput,
+): Promise<string> {
   const { jobId } = await generateVideo({
     adapter: videoAdapter(),
     prompt: input.prompt,

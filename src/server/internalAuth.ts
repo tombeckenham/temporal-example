@@ -8,10 +8,7 @@ function bytesToHex(bytes: ArrayBuffer | Uint8Array): string {
   return [...view].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-async function hmacSha256(
-  secret: string,
-  body: string,
-): Promise<ArrayBuffer> {
+async function hmacSha256(secret: string, body: string): Promise<ArrayBuffer> {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -25,6 +22,12 @@ async function hmacSha256(
 export async function signBody(secret: string, body: string): Promise<string> {
   const sig = await hmacSha256(secret, body)
   return bytesToHex(sig)
+}
+
+/** SHA-256 digest as hex — used to bind binary bodies into signed payloads. */
+export async function sha256Hex(data: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return bytesToHex(digest)
 }
 
 export async function verifyBodySignature(

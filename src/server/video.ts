@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { VIDEO_SIZES } from '../temporal/types.ts'
+import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
+import { ownsJob } from './jobAccess.ts'
 
 const generateVideoInputSchema = z.object({
   prompt: z.string().trim().min(1, 'Prompt is required'),
@@ -51,8 +53,8 @@ async function starterFetch(
 }
 
 async function requireUserId(): Promise<string> {
-  if (process.env['E2E_BYPASS_AUTH'] === '1') {
-    return 'e2e-user'
+  if (isAuthBypassed()) {
+    return E2E_USER_ID
   }
 
   // Dynamic import — avoids loading Better Auth / Postgres on the e2e hot path
@@ -61,7 +63,7 @@ async function requireUserId(): Promise<string> {
   const session = await auth.api.getSession({
     headers: getRequest().headers,
   })
-  if (!session?.user?.id) {
+  if (!session?.user.id) {
     throw new Error('Sign in required')
   }
   return session.user.id
@@ -76,7 +78,7 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const userId = await requireUserId()
     const workflowId = newId()
-    const recordJob = process.env['E2E_BYPASS_AUTH'] !== '1'
+    const recordJob = !isAuthBypassed()
 
     if (recordJob) {
       const { getDb } = await import('../db/index.ts')
@@ -115,7 +117,7 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
       )
     }
 
-    const body = (await response.json()) as { workflowId: string }
+    const body = await response.json<{ workflowId: string }>()
     return { workflowId: body.workflowId }
   })
 
@@ -125,7 +127,10 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
 export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
   .validator(workflowIdSchema)
   .handler(async ({ data }) => {
-    await requireUserId()
+    const userId = await requireUserId()
+    if (!isAuthBypassed() && !(await ownsJob(userId, data.workflowId))) {
+      throw new Error(`Workflow not found: ${data.workflowId}`)
+    }
 
     const response = await starterFetch(
       `/workflows/${encodeURIComponent(data.workflowId)}/status`,
@@ -141,9 +146,9 @@ export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
       )
     }
 
-    return (await response.json()) as {
+    return await response.json<{
       workflowId: string
       executionStatus: string
       status: VideoWorkflowStatus
-    }
+    }>()
   })

@@ -1,4 +1,4 @@
-import { signBody } from '../../server/internalAuth.ts'
+import { sha256Hex, signBody } from '../../server/internalAuth.ts'
 
 export interface PersistVideoInput {
   workflowId: string
@@ -23,7 +23,9 @@ export async function persistVideo(
     return { videoUrl: input.videoUrl }
   }
   if (!secret) {
-    throw new Error('STATUS_WEBHOOK_SECRET is required when STATUS_WEBHOOK_URL is set')
+    throw new Error(
+      'STATUS_WEBHOOK_SECRET is required when STATUS_WEBHOOK_URL is set',
+    )
   }
 
   const source = await fetch(input.videoUrl)
@@ -38,7 +40,11 @@ export async function persistVideo(
 
   const contentType = source.headers.get('content-type') ?? 'video/mp4'
   const bytes = await source.arrayBuffer()
-  const signPayload = `${input.workflowId}:${bytes.byteLength}:${contentType}`
+  // Sign the body digest + a timestamp so the signature binds the actual
+  // content and cannot be replayed later with different bytes.
+  const timestamp = String(Date.now())
+  const bodyHash = await sha256Hex(bytes)
+  const signPayload = `${input.workflowId}:${timestamp}:${bodyHash}:${contentType}`
   const signature = await signBody(secret, signPayload)
 
   const url = baseUrl.replace(/\/$/, '') + '/internal/videos'
@@ -47,6 +53,7 @@ export async function persistVideo(
     headers: {
       'content-type': contentType,
       'X-Signature': signature,
+      'X-Timestamp': timestamp,
       'X-Workflow-Id': input.workflowId,
     },
     body: bytes,
@@ -59,6 +66,6 @@ export async function persistVideo(
     )
   }
 
-  const result = (await response.json()) as { videoUrl: string }
+  const result = await response.json<{ videoUrl: string }>()
   return { videoUrl: result.videoUrl }
 }

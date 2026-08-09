@@ -68,12 +68,18 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
 
   /** RPC: push a new status snapshot and broadcast to all sockets. */
   async notify(payload: JobNotifyPayload): Promise<{ accepted: boolean }> {
-    const existing = this.readRow()
-    if (
-      existing &&
-      Date.parse(payload.updatedAt) < Date.parse(existing.updated_at)
-    ) {
+    const incoming = Date.parse(payload.updatedAt)
+    if (Number.isNaN(incoming)) {
+      // A malformed timestamp would poison the staleness guard: NaN
+      // comparisons are always false, so every later notify would be accepted.
       return { accepted: false }
+    }
+    const existing = this.readRow()
+    if (existing) {
+      const prev = Date.parse(existing.updated_at)
+      if (!Number.isNaN(prev) && incoming < prev) {
+        return { accepted: false }
+      }
     }
 
     const json = JSON.stringify(payload.status)
@@ -147,7 +153,9 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
     await this.ctx.storage.setAlarm(Date.now() + STUCK_ALARM_MS)
   }
 
-  private async scheduleAlarmForPhase(phase: VideoWorkflowStatus['phase']): Promise<void> {
+  private async scheduleAlarmForPhase(
+    phase: VideoWorkflowStatus['phase'],
+  ): Promise<void> {
     if (phase === 'completed' || phase === 'failed') {
       await this.ctx.storage.deleteAlarm()
       await this.ctx.storage.delete('alarmCount')
@@ -189,10 +197,7 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
 
   async getGenerationRun(runId: string): Promise<unknown | null> {
     const row = this.ctx.storage.sql
-      .exec(
-        `SELECT record FROM generation_run WHERE run_id = ? LIMIT 1`,
-        runId,
-      )
+      .exec(`SELECT record FROM generation_run WHERE run_id = ? LIMIT 1`, runId)
       .toArray()[0] as { record: string } | undefined
     if (!row) return null
     return JSON.parse(row.record) as unknown
@@ -237,7 +242,10 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
     return new Response(null, { status: 101, webSocket: client })
   }
 
-  override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+  override async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ) {
     // Clients may ping; reply with current status on "ping" / "getStatus"
     const text =
       typeof message === 'string' ? message : new TextDecoder().decode(message)
@@ -264,9 +272,7 @@ export class JobRoom extends DurableObject<Cloudflare.Env> {
 
   private readRow(): StoredRow | null {
     const row = this.ctx.storage.sql
-      .exec(
-        `SELECT payload, updated_at FROM job_status WHERE id = 1 LIMIT 1`,
-      )
+      .exec(`SELECT payload, updated_at FROM job_status WHERE id = 1 LIMIT 1`)
       .toArray()[0] as StoredRow | undefined
     return row ?? null
   }

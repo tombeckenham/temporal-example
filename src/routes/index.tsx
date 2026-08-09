@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authClient } from '../auth/client.ts'
-import { listMyJobs, type VideoJobRow } from '../server/jobs.ts'
-import { getSession, type PublicSession } from '../server/session.ts'
+import { listMyJobs } from '../server/jobs.ts'
+import type { VideoJobRow } from '../server/jobs.ts'
+import { getSession } from '../server/session.ts'
+import type { PublicSession } from '../server/session.ts'
 import { startVideoWorkflow } from '../server/video.ts'
 import type {
   GenerateVideoInput,
@@ -14,18 +16,8 @@ import type {
 export const Route = createFileRoute('/')({
   component: Home,
   loader: async () => {
-    if (process.env['E2E_BYPASS_AUTH'] === '1') {
-      return {
-        session: {
-          user: {
-            id: 'e2e-user',
-            email: 'e2e@example.com',
-            name: 'E2E User',
-          },
-        } satisfies PublicSession,
-        jobs: [] as VideoJobRow[],
-      }
-    }
+    // E2E bypass is handled inside the server functions — this loader also
+    // runs in the browser, where process.env does not exist.
     const session = await getSession()
     let jobs: VideoJobRow[] = []
     if (session?.user) {
@@ -55,7 +47,11 @@ const SIZE_OPTIONS = [
 
 type WsMessage =
   | { type: 'hello'; status: null }
-  | { type: 'status'; status: VideoWorkflowStatus | null; updatedAt: string | null }
+  | {
+      type: 'status'
+      status: VideoWorkflowStatus | null
+      updatedAt: string | null
+    }
 
 function jobWebSocketUrl(workflowId: string): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -78,15 +74,14 @@ function Home() {
   const [status, setStatus] = useState<VideoWorkflowStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)
-  const [wsState, setWsState] = useState<'idle' | 'connecting' | 'open' | 'closed'>(
-    'idle',
-  )
+  const [wsState, setWsState] = useState<
+    'idle' | 'connecting' | 'open' | 'closed'
+  >('idle')
   const wsRef = useRef<WebSocket | null>(null)
 
   const signedIn = !!session?.user
 
   const refreshJobs = useCallback(async () => {
-    if (process.env['E2E_BYPASS_AUTH'] === '1') return
     if (!session?.user) return
     try {
       const next = await listMyJobs({ data: { limit: 12 } })
@@ -97,9 +92,7 @@ function Home() {
   }, [session?.user])
 
   const isRunning =
-    !!workflowId &&
-    status?.phase !== 'completed' &&
-    status?.phase !== 'failed'
+    !!workflowId && status?.phase !== 'completed' && status?.phase !== 'failed'
 
   const applyStatus = useCallback(
     (next: VideoWorkflowStatus | null) => {
@@ -182,14 +175,11 @@ function Home() {
     const controller = new AbortController()
     const tick = async () => {
       try {
-        const res = await fetch(
-          `/api/jobs/${encodeURIComponent(workflowId)}`,
-          { signal: controller.signal },
-        )
+        const res = await fetch(`/api/jobs/${encodeURIComponent(workflowId)}`, {
+          signal: controller.signal,
+        })
         if (!res.ok) return
-        const body = (await res.json()) as {
-          status: VideoWorkflowStatus | null
-        }
+        const body = await res.json<{ status: VideoWorkflowStatus | null }>()
         if (body.status) applyStatus(body.status)
       } catch {
         // ignore abort / transient
@@ -264,7 +254,7 @@ function Home() {
               </h1>
             </div>
             <div className="text-sm text-zinc-400">
-              {signedIn && session ? (
+              {session ? (
                 <div className="flex items-center gap-3">
                   <span className="text-zinc-300">{session.user.email}</span>
                   <button
@@ -371,9 +361,7 @@ function Home() {
           <div className="flex flex-wrap gap-3 pt-1">
             <button
               type="submit"
-              disabled={
-                !signedIn || isStarting || isRunning || !prompt.trim()
-              }
+              disabled={!signedIn || isStarting || isRunning || !prompt.trim()}
               className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isStarting
@@ -519,16 +507,17 @@ function Home() {
                         xAI job: {status.jobId}
                       </p>
                     )}
-                    {status.progress != null && status.phase === 'generating' && (
-                      <div className="pt-1">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                          <div
-                            className="h-full rounded-full bg-violet-500 transition-all"
-                            style={{ width: `${status.progress}%` }}
-                          />
+                    {status.progress != null &&
+                      status.phase === 'generating' && (
+                        <div className="pt-1">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                            <div
+                              className="h-full rounded-full bg-violet-500 transition-all"
+                              style={{ width: `${status.progress}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 )}
               </div>
@@ -558,7 +547,8 @@ function Home() {
                     Open video URL
                   </a>
                   <p className="mt-1 text-xs text-zinc-600">
-                    Served from R2 when persist succeeds; otherwise a temporary provider URL.
+                    Served from R2 when persist succeeds; otherwise a temporary
+                    provider URL.
                   </p>
                 </div>
               </div>

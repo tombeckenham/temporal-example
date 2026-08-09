@@ -100,10 +100,7 @@ export async function handleJobStatusHttp(
   const stub = env.JOB_ROOM.get(id)
   const status = await stub.getStatus()
   if (!status) {
-    return Response.json(
-      { workflowId, status: null },
-      { status: 404 },
-    )
+    return Response.json({ workflowId, status: null }, { status: 404 })
   }
   return Response.json({ workflowId, status })
 }
