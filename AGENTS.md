@@ -83,7 +83,7 @@ Wrangler secrets for production: `DATABASE_URL`, `BETTER_AUTH_*`, `STATUS_WEBHOO
 
 Never put `XAI_API_KEY` in client code. Only activities / Node worker may call xAI.
 
-Schema: `bun run db:push` (needs PlanetScale role with CREATE on `public`).
+Schema: `bun run db:migrate` (needs PlanetScale role with CREATE on `public`; do not use `db:push`).
 
 ## Project layout
 

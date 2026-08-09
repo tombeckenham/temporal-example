@@ -43,12 +43,13 @@ Also put the same auth/DB secrets in `.dev.vars` for the Cloudflare Vite / worke
 ### Database schema
 
 PlanetScale **API** roles (`pscale_api_*`) have `USAGE` on `public` but **not** `CREATE`.  
-Create a password with the **admin** role in the [PlanetScale dashboard](https://app.planetscale.com) (Roles → New password → Admin), put that URL in `DATABASE_URL` **without quotes**, then:
+Create a password with the **admin** role in the [PlanetScale dashboard](https://app.planetscale.com) (Roles → New password → Admin), put that URL in `DATABASE_URL` **without quotes** (and the same value in `.dev.vars` for workerd), then:
 
 ```bash
-bun run db:push
-# or: psql "$DATABASE_URL" -f drizzle/0000_long_mauler.sql
+bun run db:migrate
 ```
+
+Do **not** use `db:push` for this project — migrations under `drizzle/` are the source of truth.
 
 As the default `postgres` role you can also grant your API role DDL:
 
