@@ -1,6 +1,7 @@
 import {
   ApplicationFailure,
   defineQuery,
+  log,
   proxyActivities,
   setHandler,
   sleep,
@@ -19,19 +20,26 @@ import type {
  */
 export const statusQuery = defineQuery<VideoWorkflowStatus>('status')
 
-const {
-  enhancePrompt,
-  startVideoJob,
-  pollVideoJob,
-  publishStatus,
-  persistVideo,
-} = proxyActivities<typeof activities>({
-  startToCloseTimeout: '5 minutes',
+const { enhancePrompt, startVideoJob, pollVideoJob, persistVideo } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes',
+    retry: {
+      initialInterval: '2s',
+      backoffCoefficient: 2,
+      maximumInterval: '30s',
+      maximumAttempts: 5,
+    },
+  })
+
+// Status publishes get their own generous retry policy — the JobRoom is only
+// a status mirror, so an unreachable edge should never fail the workflow.
+const { publishStatus } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '30 seconds',
   retry: {
     initialInterval: '2s',
     backoffCoefficient: 2,
-    maximumInterval: '30s',
-    maximumAttempts: 5,
+    maximumInterval: '60s',
+    maximumAttempts: 8,
   },
 })
 
@@ -39,7 +47,15 @@ async function projectStatus(
   workflowId: string,
   next: VideoWorkflowStatus,
 ): Promise<VideoWorkflowStatus> {
-  await publishStatus({ workflowId, status: next })
+  try {
+    await publishStatus({ workflowId, status: next })
+  } catch (err) {
+    log.warn('publishStatus failed — continuing without edge notify', {
+      workflowId,
+      phase: next.phase,
+      error: String(err),
+    })
+  }
   return next
 }
 
@@ -95,6 +111,7 @@ export async function generateVideoWorkflow(
 
   const maxPolls = 120 // ~10 minutes at 5s interval
   let lastPublishedProgress: number | undefined
+  let lastPublishedJobStatus: string | undefined = 'pending'
 
   for (let i = 0; i < maxPolls; i++) {
     const poll = await pollVideoJob(jobId)
@@ -155,17 +172,19 @@ export async function generateVideoWorkflow(
           ? `Generating… ${progress}%`
           : 'Generating… (polling Grok Imagine)',
     }
-    // Keep query handler in sync even when we throttle edge publishes
-    setHandler(statusQuery, () => status)
 
-    // Throttle progress publishes: first tick or ≥5% change
+    // Throttle publishes: job status change, or first / ≥5% progress change.
+    // A provider that never reports progress publishes once per status, not
+    // on every 5s poll.
     const shouldPublish =
-      progress == null ||
-      lastPublishedProgress == null ||
-      progress - lastPublishedProgress >= 5
+      poll.status !== lastPublishedJobStatus ||
+      (progress != null &&
+        (lastPublishedProgress == null ||
+          progress - lastPublishedProgress >= 5))
 
     if (shouldPublish) {
-      await publishStatus({ workflowId, status })
+      await projectStatus(workflowId, status)
+      lastPublishedJobStatus = poll.status
       if (progress != null) lastPublishedProgress = progress
     }
 

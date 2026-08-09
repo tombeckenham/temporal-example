@@ -3,12 +3,7 @@
  * Column names snake_case; drizzleAdapter maps camelCase fields by default.
  * All primary keys are ULIDs (text) via `newId()` / Better Auth `advanced.generateId`.
  */
-import {
-  boolean,
-  pgTable,
-  text,
-  timestamp,
-} from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),

@@ -1,6 +1,9 @@
+import { getCfEnv } from '../server/cfEnv.ts'
+
 /**
- * Send OTP emails via Cloudflare Email Service binding when available,
- * otherwise log the code for local dev (EMAIL_MODE=console).
+ * Send OTP emails via the Cloudflare Email Service binding, or log the code
+ * for local dev (EMAIL_MODE=console). Outside console mode a missing binding
+ * is an error — the OTP must never fall back to logs in production.
  */
 export async function sendOtpEmail(input: {
   to: string
@@ -8,12 +11,10 @@ export async function sendOtpEmail(input: {
   type: string
   env?: Cloudflare.Env
 }): Promise<void> {
+  const env = input.env ?? getCfEnv()
+
   const from =
-    process.env['EMAIL_FROM'] ??
-    (input.env && 'EMAIL_FROM' in input.env
-      ? String((input.env as { EMAIL_FROM?: string }).EMAIL_FROM)
-      : undefined) ??
-    'noreply@localhost'
+    process.env['EMAIL_FROM'] ?? env?.EMAIL_FROM ?? 'noreply@localhost'
 
   const subject =
     input.type === 'sign-in'
@@ -23,24 +24,22 @@ export async function sendOtpEmail(input: {
   const text = `Your code is ${input.otp}\n\nIt expires in 10 minutes.`
 
   const mode = process.env['EMAIL_MODE'] ?? 'console'
-  const emailBinding = input.env?.EMAIL
 
-  if (mode === 'console' || !emailBinding) {
+  if (mode === 'console') {
     console.info(
-      `[email:${mode === 'console' || !emailBinding ? 'console' : 'fallback'}] to=${input.to} type=${input.type} otp=${input.otp}`,
+      `[email:console] to=${input.to} type=${input.type} otp=${input.otp}`,
     )
     return
   }
 
-  // Cloudflare Email Service Workers binding (shape may vary by API version)
-  const send = emailBinding.send.bind(emailBinding) as (opts: {
-    to: string | { email: string }[]
-    from: string | { email: string }
-    subject: string
-    text?: string
-  }) => Promise<unknown>
+  const emailBinding = env?.EMAIL
+  if (!emailBinding) {
+    throw new Error(
+      `EMAIL_MODE=${mode} but the EMAIL binding is not configured — cannot send OTP`,
+    )
+  }
 
-  await send({
+  await emailBinding.send({
     to: input.to,
     from,
     subject,

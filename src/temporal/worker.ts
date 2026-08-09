@@ -72,7 +72,9 @@ async function run() {
     process.env['TEMPORAL_GATEWAY_DISABLED'] === '1' ||
     process.env['TEMPORAL_GATEWAY_DISABLED'] === 'true'
   if (!gatewayDisabled) {
-    const port = Number(process.env['TEMPORAL_GATEWAY_PORT'] ?? GATEWAY_DEFAULT_PORT)
+    const port = Number(
+      process.env['TEMPORAL_GATEWAY_PORT'] ?? GATEWAY_DEFAULT_PORT,
+    )
     startTemporalGateway(Number.isFinite(port) ? port : GATEWAY_DEFAULT_PORT)
   }
 
@@ -82,7 +84,9 @@ async function run() {
     connection,
     namespace,
     taskQueue: TASK_QUEUE,
-    workflowsPath: fileURLToPath(new URL('./workflows/index.ts', import.meta.url)),
+    workflowsPath: fileURLToPath(
+      new URL('./workflows/index.ts', import.meta.url),
+    ),
     activities,
   })
 

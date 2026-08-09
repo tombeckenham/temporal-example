@@ -1,10 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { VIDEO_SIZES } from '../temporal/types.ts'
+import { isAuthBypassed } from './authBypass.ts'
+import { authMiddleware, jobOwnerMiddleware } from './middleware.ts'
 
 const generateVideoInputSchema = z.object({
   prompt: z.string().trim().min(1, 'Prompt is required'),
@@ -50,33 +51,17 @@ async function starterFetch(
   })
 }
 
-async function requireUserId(): Promise<string> {
-  if (process.env['E2E_BYPASS_AUTH'] === '1') {
-    return 'e2e-user'
-  }
-
-  // Dynamic import — avoids loading Better Auth / Postgres on the e2e hot path
-  // (Workers runtime has had Buffer issues with some auth deps).
-  const { auth } = await import('../auth/server.ts')
-  const session = await auth.api.getSession({
-    headers: getRequest().headers,
-  })
-  if (!session?.user?.id) {
-    throw new Error('Sign in required')
-  }
-  return session.user.id
-}
-
 /**
  * Start a video workflow via the Node Temporal gateway.
- * Requires a Better Auth session (unless E2E_BYPASS_AUTH=1).
+ * Auth is enforced by authMiddleware (bypassed only in dev e2e builds).
  */
 export const startVideoWorkflow = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
   .validator(generateVideoInputSchema)
-  .handler(async ({ data }) => {
-    const userId = await requireUserId()
+  .handler(async ({ data, context }) => {
+    const { userId } = context
     const workflowId = newId()
-    const recordJob = process.env['E2E_BYPASS_AUTH'] !== '1'
+    const recordJob = !isAuthBypassed()
 
     if (recordJob) {
       const { getDb } = await import('../db/index.ts')
@@ -115,18 +100,18 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
       )
     }
 
-    const body = (await response.json()) as { workflowId: string }
+    const body = await response.json<{ workflowId: string }>()
     return { workflowId: body.workflowId }
   })
 
 /**
  * Optional Temporal query via gateway (ops / fallback).
+ * Auth + per-user ownership are enforced by jobOwnerMiddleware.
  */
 export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
+  .middleware([jobOwnerMiddleware])
   .validator(workflowIdSchema)
   .handler(async ({ data }) => {
-    await requireUserId()
-
     const response = await starterFetch(
       `/workflows/${encodeURIComponent(data.workflowId)}/status`,
     )
@@ -141,9 +126,9 @@ export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
       )
     }
 
-    return (await response.json()) as {
+    return await response.json<{
       workflowId: string
       executionStatus: string
       status: VideoWorkflowStatus
-    }
+    }>()
   })

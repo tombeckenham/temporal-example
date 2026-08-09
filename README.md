@@ -65,11 +65,11 @@ Optional production: Cloudflare **Hyperdrive** in front of PlanetScale (see `wra
 bun run dev:all
 ```
 
-| Process | Port | Role |
-| --- | --- | --- |
-| Temporal CLI | 7233 / UI 8233 | Workflow engine |
-| Worker + gateway | 8788 | Activities + `POST /workflows/start` |
-| Vite / workerd | 3000 | App + JobRoom DO + auth |
+| Process          | Port           | Role                                 |
+| ---------------- | -------------- | ------------------------------------ |
+| Temporal CLI     | 7233 / UI 8233 | Workflow engine                      |
+| Worker + gateway | 8788           | Activities + `POST /workflows/start` |
+| Vite / workerd   | 3000           | App + JobRoom DO + auth              |
 
 1. Open [http://localhost:3000/login](http://localhost:3000/login)
 2. Enter email → OTP is printed in the **server log** when `EMAIL_MODE=console`

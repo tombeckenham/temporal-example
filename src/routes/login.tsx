@@ -134,9 +134,7 @@ function LoginPage() {
           </form>
         )}
 
-        {hint && (
-          <p className="mt-4 text-xs text-zinc-500">{hint}</p>
-        )}
+        {hint && <p className="mt-4 text-xs text-zinc-500">{hint}</p>}
         {error && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}

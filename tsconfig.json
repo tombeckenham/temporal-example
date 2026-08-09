@@ -15,9 +15,7 @@
     ".nitro",
     ".tanstack",
     ".temporal",
-    ".wrangler",
-    "e2e",
-    "playwright.config.ts"
+    ".wrangler"
   ],
   "compilerOptions": {
     "target": "ES2022",

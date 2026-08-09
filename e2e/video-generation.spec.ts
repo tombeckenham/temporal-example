@@ -5,9 +5,7 @@ import { expect, test } from '@playwright/test'
  * No real XAI_API_KEY; worker points at CopilotKit AIMock via XAI_BASE_URL.
  */
 test.describe('video generation (AIMock)', () => {
-  test('happy path: enhance → generate → completed video', async ({
-    page,
-  }) => {
+  test('happy path: enhance → generate → completed video', async ({ page }) => {
     const consoleErrors: string[] = []
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text())

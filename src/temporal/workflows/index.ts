@@ -1,4 +1,1 @@
-export {
-  generateVideoWorkflow,
-  statusQuery,
-} from './generateVideoWorkflow.ts'
+export { generateVideoWorkflow, statusQuery } from './generateVideoWorkflow.ts'
