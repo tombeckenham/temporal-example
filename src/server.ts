@@ -26,6 +26,59 @@ function matchJobPath(pathname: string, prefix: string): string | null {
   return workflowId && workflowId.length > 0 ? workflowId : null
 }
 
+/** workflowIds are ULIDs (Crockford Base32, 26 chars) — see src/lib/id.ts */
+const WORKFLOW_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i
+
+type JobRouteHandler = (
+  request: Request,
+  env: Cloudflare.Env,
+  workflowId: string,
+) => Promise<Response>
+
+/**
+ * Workflow-scoped routes (`<prefix>:workflowId`). The dispatch loop below
+ * guards every entry uniformly: the param must be a ULID and the session
+ * user must own the video_job row (authorizeJobAccess). Add new job routes
+ * here — never as ad-hoc branches that could skip the guard.
+ */
+const jobRoutes: Array<{
+  method: string
+  prefix: string
+  handler: JobRouteHandler
+}> = [
+  {
+    method: 'GET',
+    prefix: '/api/videos/',
+    handler: (_request, env, workflowId) => handleVideoGet(env, workflowId),
+  },
+  {
+    // WebSocket upgrades arrive as GET
+    method: 'GET',
+    prefix: '/ws/jobs/',
+    handler: (request, env, workflowId) =>
+      handleJobWebSocket(request, env, workflowId),
+  },
+  {
+    method: 'GET',
+    prefix: '/api/jobs/',
+    handler: (_request, env, workflowId) =>
+      handleJobStatusHttp(env, workflowId),
+  },
+]
+
+/**
+ * Machine-to-machine webhooks from the Temporal worker. Not session-authed —
+ * each handler verifies the request's HMAC signature (STATUS_WEBHOOK_SECRET)
+ * before acting, since the signature covers the request body.
+ */
+const internalRoutes: Array<{
+  path: string
+  handler: (request: Request, env: Cloudflare.Env) => Promise<Response>
+}> = [
+  { path: '/internal/job-events', handler: handleJobEvents },
+  { path: '/internal/videos', handler: handleVideoPersist },
+]
+
 export default {
   async fetch(
     request: Request,
@@ -58,33 +111,24 @@ export default {
     if (env.E2E_BYPASS_AUTH)
       process.env['E2E_BYPASS_AUTH'] = env.E2E_BYPASS_AUTH
 
-    if (url.pathname === '/internal/job-events') {
-      return handleJobEvents(request, env)
+    if (request.method === 'POST') {
+      for (const route of internalRoutes) {
+        if (url.pathname === route.path) {
+          return route.handler(request, env)
+        }
+      }
     }
 
-    if (url.pathname === '/internal/videos') {
-      return handleVideoPersist(request, env)
-    }
-
-    const videoId = matchJobPath(url.pathname, '/api/videos/')
-    if (videoId && request.method === 'GET') {
-      const denied = await authorizeJobAccess(request, videoId)
+    for (const route of jobRoutes) {
+      if (request.method !== route.method) continue
+      const workflowId = matchJobPath(url.pathname, route.prefix)
+      if (!workflowId) continue
+      if (!WORKFLOW_ID_RE.test(workflowId)) {
+        return new Response('Invalid workflow id', { status: 400 })
+      }
+      const denied = await authorizeJobAccess(request, workflowId)
       if (denied) return denied
-      return handleVideoGet(env, videoId)
-    }
-
-    const wsJobId = matchJobPath(url.pathname, '/ws/jobs/')
-    if (wsJobId) {
-      const denied = await authorizeJobAccess(request, wsJobId)
-      if (denied) return denied
-      return handleJobWebSocket(request, env, wsJobId)
-    }
-
-    const apiJobId = matchJobPath(url.pathname, '/api/jobs/')
-    if (apiJobId && request.method === 'GET') {
-      const denied = await authorizeJobAccess(request, apiJobId)
-      if (denied) return denied
-      return handleJobStatusHttp(env, apiJobId)
+      return route.handler(request, env, workflowId)
     }
 
     return handler.fetch(request)

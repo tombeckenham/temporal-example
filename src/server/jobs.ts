@@ -1,8 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
+import { isAuthBypassed } from './authBypass.ts'
+import { authMiddleware } from './middleware.ts'
 
 export type VideoJobRow = {
   id: string
@@ -13,31 +13,20 @@ export type VideoJobRow = {
   updatedAt: string
 }
 
-async function requireUserId(): Promise<string> {
-  if (isAuthBypassed()) {
-    return E2E_USER_ID
-  }
-  const { auth } = await import('../auth/server.ts')
-  const session = await auth.api.getSession({
-    headers: getRequest().headers,
-  })
-  if (!session?.user.id) {
-    throw new Error('Sign in required')
-  }
-  return session.user.id
-}
-
 /**
  * List the current user's recent video jobs (Postgres index — not live DO status).
+ * Auth is enforced by authMiddleware.
  */
 export const listMyJobs = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
   .validator(z.object({ limit: z.number().int().min(1).max(50).optional() }))
-  .handler(async ({ data }): Promise<VideoJobRow[]> => {
+  .handler(async ({ data, context }): Promise<VideoJobRow[]> => {
     if (isAuthBypassed()) {
+      // e2e runs without a database — the jobs list is always empty
       return []
     }
 
-    const userId = await requireUserId()
+    const { userId } = context
     const limit = data.limit ?? 20
     const { getDb } = await import('../db/index.ts')
     const { videoJob } = await import('../db/schema.ts')
