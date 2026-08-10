@@ -27,7 +27,9 @@ jobs:
       - name: Install Temporal CLI
         run: |
           curl -sSf https://temporal.download/cli.sh | sh
+          # GITHUB_PATH only affects subsequent steps; export for this shell too.
           echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.temporalio/bin:$PATH"
           temporal --version
 
       - name: Setup pscale
