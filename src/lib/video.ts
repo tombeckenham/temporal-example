@@ -17,6 +17,14 @@ const workflowIdSchema = z.object({
   workflowId: z.string().min(1, 'workflowId is required'),
 })
 
+/**
+ * Per-user quotas, enforced where the user id lives. The gateway's global
+ * start limit and the worker's task-queue rate (xAI: imagine-video is capped
+ * at 10 RPS flat) are backstops behind these.
+ */
+const MAX_RUNNING_JOBS_PER_USER = 3
+const MAX_STARTS_PER_HOUR_PER_USER = 20
+
 const starterBaseUrl = createServerOnlyFn(() => {
   const env = getEnv()
   const url = env.TEMPORAL_STARTER_URL
@@ -46,7 +54,7 @@ const starterFetch = createServerOnlyFn(
       headers: {
         authorization: `Bearer ${starterSecret()}`,
         'content-type': 'application/json',
-        ...(init?.headers ?? {}),
+        ...init?.headers,
       },
     })
   },
@@ -61,6 +69,24 @@ export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
   .validator(generateVideoInputSchema)
   .handler(async ({ data, context }) => {
     const workflowId = newId()
+
+    const [running, lastHour] = await Promise.all([
+      context.scopedDb.jobs.countRunning(),
+      context.scopedDb.jobs.countCreatedSince(
+        new Date(Date.now() - 60 * 60_000),
+      ),
+    ])
+    if (running >= MAX_RUNNING_JOBS_PER_USER) {
+      throw new Error(
+        `You already have ${running} videos generating — wait for one to finish`,
+      )
+    }
+    if (lastHour >= MAX_STARTS_PER_HOUR_PER_USER) {
+      throw new Error(
+        `Hourly limit reached (${MAX_STARTS_PER_HOUR_PER_USER} videos/hour) — try again later`,
+      )
+    }
+
     await context.scopedDb.jobs.create({ workflowId, prompt: data.prompt })
 
     const response = await starterFetch('/workflows/start', {

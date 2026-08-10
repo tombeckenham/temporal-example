@@ -2,7 +2,7 @@ import { NativeConnection, Worker } from '@temporalio/worker'
 import { fileURLToPath } from 'node:url'
 import * as activities from './activities/index.ts'
 import { GATEWAY_DEFAULT_PORT, startTemporalGateway } from './gateway.ts'
-import { resolveTaskQueue } from './types.ts'
+import { resolveTaskQueue, XAI_TASK_QUEUE } from './types.ts'
 
 /**
  * Temporal Worker process (+ optional HTTP starter gateway for Cloudflare edge).
@@ -80,7 +80,12 @@ async function run() {
 
   const connection = await connectWithRetry(address)
 
+  const { enhancePrompt, startVideoJob, pollVideoJob, ...edgeActivities } =
+    activities
+
   const taskQueue = resolveTaskQueue()
+
+  // Workflows + edge-facing activities (webhooks, persists) — unthrottled
   const worker = await Worker.create({
     connection,
     namespace,
@@ -88,14 +93,26 @@ async function run() {
     workflowsPath: fileURLToPath(
       new URL('./workflows/index.ts', import.meta.url),
     ),
-    activities,
+    activities: edgeActivities,
+  })
+
+  // xAI-calling activities on their own queue, capped fleet-wide by the
+  // Temporal SERVER: imagine-video is 10 RPS regardless of tier; 8 leaves
+  // headroom for retries. Excess work queues durably — nothing is dropped.
+  const xaiPerSecond = Number(process.env['XAI_ACTIVITIES_PER_SECOND'] ?? 8)
+  const xaiWorker = await Worker.create({
+    connection,
+    namespace,
+    taskQueue: XAI_TASK_QUEUE,
+    maxTaskQueueActivitiesPerSecond: xaiPerSecond,
+    activities: { enhancePrompt, startVideoJob, pollVideoJob },
   })
 
   console.log(
-    `Temporal worker listening on queue "${taskQueue}" at ${address} (ns=${namespace})`,
+    `Temporal workers listening on "${taskQueue}" and "${XAI_TASK_QUEUE}" (≤${xaiPerSecond}/s) at ${address} (ns=${namespace})`,
   )
 
-  await worker.run()
+  await Promise.all([worker.run(), xaiWorker.run()])
 }
 
 run().catch((err) => {

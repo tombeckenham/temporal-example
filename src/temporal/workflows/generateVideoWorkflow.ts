@@ -13,6 +13,7 @@ import type {
   GenerateVideoResult,
   VideoWorkflowStatus,
 } from '../types.ts'
+import { XAI_TASK_QUEUE } from '../types.ts'
 
 /**
  * Query: read workflow progress without mutating state.
@@ -20,16 +21,30 @@ import type {
  */
 export const statusQuery = defineQuery<VideoWorkflowStatus>('status')
 
-const { enhancePrompt, startVideoJob, pollVideoJob, persistVideo } =
-  proxyActivities<typeof activities>({
-    startToCloseTimeout: '5 minutes',
-    retry: {
-      initialInterval: '2s',
-      backoffCoefficient: 2,
-      maximumInterval: '30s',
-      maximumAttempts: 5,
-    },
-  })
+// xAI-calling activities run on their own queue so the fleet-wide rate cap
+// (imagine-video is 10 RPS flat) throttles only them — see XAI_TASK_QUEUE.
+const { enhancePrompt, startVideoJob, pollVideoJob } = proxyActivities<
+  typeof activities
+>({
+  taskQueue: XAI_TASK_QUEUE,
+  startToCloseTimeout: '5 minutes',
+  retry: {
+    initialInterval: '2s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
+    maximumAttempts: 5,
+  },
+})
+
+const { persistVideo } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
+  retry: {
+    initialInterval: '2s',
+    backoffCoefficient: 2,
+    maximumInterval: '30s',
+    maximumAttempts: 5,
+  },
+})
 
 // Status publishes get their own generous retry policy — the JobRoom is only
 // a status mirror, so an unreachable edge should never fail the workflow.

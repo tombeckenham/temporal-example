@@ -1,7 +1,11 @@
 /** Shared types for the video generation workflow (safe for workflow sandbox). */
 
 export type VideoPhase =
-  'enhancing' | 'starting' | 'generating' | 'completed' | 'failed'
+  | 'enhancing'
+  | 'starting'
+  | 'generating'
+  | 'completed'
+  | 'failed'
 
 export type VideoJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
@@ -58,3 +62,9 @@ export function resolveTaskQueue(): string {
   const fromEnv = process.env['TEMPORAL_TASK_QUEUE']?.trim()
   return fromEnv && fromEnv.length > 0 ? fromEnv : TASK_QUEUE
 }
+
+/**
+ * Dedicated queue for activities that call xAI (enhance, submit, poll), so
+ * the xAI-protecting rate cap doesn't throttle webhooks and persists.
+ */
+export const XAI_TASK_QUEUE = 'xai-api'

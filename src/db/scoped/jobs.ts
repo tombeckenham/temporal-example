@@ -3,7 +3,7 @@
  * caller cannot read or mutate another user's job even if it passes an
  * attacker-supplied workflowId.
  */
-import { and, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq, gte } from 'drizzle-orm'
 import { getDb } from '../index.ts'
 import { videoJob } from '../schema.ts'
 
@@ -60,6 +60,24 @@ export function createJobsMethods(userId: string) {
         .update(videoJob)
         .set({ status: 'failed', updatedAt: new Date() })
         .where(and(eq(videoJob.id, workflowId), eq(videoJob.userId, userId)))
+    },
+
+    /** This user's jobs currently marked running (concurrency quota). */
+    async countRunning(): Promise<number> {
+      const rows = await getDb()
+        .select({ n: count() })
+        .from(videoJob)
+        .where(and(eq(videoJob.userId, userId), eq(videoJob.status, 'running')))
+      return rows[0]?.n ?? 0
+    },
+
+    /** Jobs this user started since `since` (rolling-window quota). */
+    async countCreatedSince(since: Date): Promise<number> {
+      const rows = await getDb()
+        .select({ n: count() })
+        .from(videoJob)
+        .where(and(eq(videoJob.userId, userId), gte(videoJob.createdAt, since)))
+      return rows[0]?.n ?? 0
     },
 
     /** True when this user owns `workflowId`. */
