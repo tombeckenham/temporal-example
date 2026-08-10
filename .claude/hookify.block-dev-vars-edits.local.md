@@ -16,6 +16,7 @@ is theirs to edit. Rewriting it — even with a backup-and-restore — clobbers 
 running dev server and loses data if the process is interrupted.
 
 **Instead:**
+
 - Per-environment local secrets: create `.dev.vars.<environment>` and select it
   with `CLOUDFLARE_ENV=<environment>` (Vite plugin) or `wrangler dev --env <environment>`.
   When that file exists, `.dev.vars` is not loaded at all — hermetic by design.

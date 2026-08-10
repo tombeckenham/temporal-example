@@ -15,5 +15,5 @@ This is how the e2e harness ended up clobbering local secrets and killing a
 running dev server. Do not reintroduce it.
 
 **Instead:** commit a `.dev.vars.<environment>` file with non-secret test values
-and select it with `CLOUDFLARE_ENV=<environment>`. Cloudflare loads *only* that
+and select it with `CLOUDFLARE_ENV=<environment>`. Cloudflare loads _only_ that
 file when it exists, so the developer's `.dev.vars` is never read or touched.

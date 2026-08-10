@@ -18,7 +18,7 @@ is visible to typecheck, lint and the bundler.
 
 **In particular, `await import()` is not the way to keep server code out of the
 client bundle** — module boundaries are. A module that a route component imports
-must export *only* server functions and types: TanStack Start compiles away
+must export _only_ server functions and types: TanStack Start compiles away
 `.handler()` bodies, but a plain exported function keeps its imports in the
 client graph and drags Postgres/Better Auth into the browser bundle.
 
