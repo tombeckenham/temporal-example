@@ -1,0 +1,10 @@
+# https://lefthook.dev — mirrors CI quality gates on every commit
+pre-commit:
+  parallel: true
+  commands:
+    typecheck:
+      run: bun run typecheck
+    format:
+      run: bun run check
+    lint:
+      run: bun run lint

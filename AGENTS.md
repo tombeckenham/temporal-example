@@ -105,6 +105,9 @@ and Fly get runtime secrets (`scripts/sync-secrets.ts`, run with bun).
 
 Typecheck uses TypeScript 7 native `tsc`. Lint/format uses oxlint + oxfmt (not ESLint/Prettier).
 
+**Git hooks (Lefthook):** `bun install` runs `lefthook install`. Pre-commit runs
+`typecheck`, `check` (oxfmt), and `lint` (oxlint) in parallel — same gates as CI.
+
 ## Environment
 
 `.env.local` (gitignored via `*.local`) for Node worker + scripts; `.dev.vars` for Workerd bindings/secrets.
