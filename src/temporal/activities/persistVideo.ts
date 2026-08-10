@@ -1,4 +1,4 @@
-import { sha256Hex, signBody } from '../../server/internalAuth.ts'
+import { sha256Hex, signBody } from '../../lib/internalAuth.ts'
 
 export interface PersistVideoInput {
   workflowId: string

@@ -39,5 +39,57 @@
   ],
   "env": {
     "builtin": true
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/db/index.ts", "#/db/index.ts"],
+                "message": "Import createScopedDb from db/scoped.ts so queries are filtered by userId. Only db/scoped/*, db/system.ts and auth/server.ts may reach getDb directly."
+              },
+              {
+                "group": ["@temporalio/*"],
+                "message": "The edge Worker must never import @temporalio/* — talk to the Node worker over the HTTP gateway (lib/video.ts)."
+              }
+            ],
+            "paths": [
+              {
+                "name": "cloudflare:workers",
+                "importNames": ["env"],
+                "message": "Read bindings via getEnv() from lib/env.ts rather than importing env directly, so there is one place that owns Workers env access."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/db/index.ts",
+        "src/db/scoped/*.ts",
+        "src/db/system.ts",
+        "src/auth/server.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/lib/env.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/temporal/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }
