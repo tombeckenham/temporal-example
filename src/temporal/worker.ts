@@ -2,7 +2,7 @@ import { NativeConnection, Worker } from '@temporalio/worker'
 import { fileURLToPath } from 'node:url'
 import * as activities from './activities/index.ts'
 import { GATEWAY_DEFAULT_PORT, startTemporalGateway } from './gateway.ts'
-import { TASK_QUEUE } from './types.ts'
+import { resolveTaskQueue } from './types.ts'
 
 /**
  * Temporal Worker process (+ optional HTTP starter gateway for Cloudflare edge).
@@ -80,10 +80,11 @@ async function run() {
 
   const connection = await connectWithRetry(address)
 
+  const taskQueue = resolveTaskQueue()
   const worker = await Worker.create({
     connection,
     namespace,
-    taskQueue: TASK_QUEUE,
+    taskQueue,
     workflowsPath: fileURLToPath(
       new URL('./workflows/index.ts', import.meta.url),
     ),
@@ -91,7 +92,7 @@ async function run() {
   })
 
   console.log(
-    `Temporal worker listening on queue "${TASK_QUEUE}" at ${address} (ns=${namespace})`,
+    `Temporal worker listening on queue "${taskQueue}" at ${address} (ns=${namespace})`,
   )
 
   await worker.run()

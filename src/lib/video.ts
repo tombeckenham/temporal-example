@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { VIDEO_SIZES } from '../temporal/types.ts'
-import { isAuthBypassed } from './authBypass.ts'
 import { getEnv } from './env.ts'
 import { authMiddleware, jobOwnerMiddleware } from './middleware.ts'
 
@@ -55,18 +54,14 @@ const starterFetch = createServerOnlyFn(
 
 /**
  * Start a video workflow via the Node Temporal gateway.
- * Auth is enforced by authMiddleware (bypassed only in dev e2e builds).
+ * Auth is enforced by authMiddleware; job ownership is recorded in Postgres.
  */
 export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .validator(generateVideoInputSchema)
   .handler(async ({ data, context }) => {
     const workflowId = newId()
-    const recordJob = !isAuthBypassed()
-
-    if (recordJob) {
-      await context.scopedDb.jobs.create({ workflowId, prompt: data.prompt })
-    }
+    await context.scopedDb.jobs.create({ workflowId, prompt: data.prompt })
 
     const response = await starterFetch('/workflows/start', {
       method: 'POST',
@@ -80,9 +75,7 @@ export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
     })
 
     if (!response.ok) {
-      if (recordJob) {
-        await context.scopedDb.jobs.markFailed(workflowId)
-      }
+      await context.scopedDb.jobs.markFailed(workflowId)
       const text = await response.text()
       throw new Error(
         `Failed to start workflow (${response.status}): ${text || response.statusText}`,

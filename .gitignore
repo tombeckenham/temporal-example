@@ -16,6 +16,8 @@ dev.db
 dev.db-*
 .cursor
 .dev.vars
+.dev.vars.e2e-backup
+.e2e-db.json
 test-results
 playwright-report
 blob-report

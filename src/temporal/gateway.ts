@@ -21,7 +21,7 @@ import type {
   VideoSize,
   VideoWorkflowStatus,
 } from './types.ts'
-import { TASK_QUEUE, VIDEO_SIZES } from './types.ts'
+import { resolveTaskQueue, VIDEO_SIZES } from './types.ts'
 import { generateVideoWorkflow, statusQuery } from './workflows/index.ts'
 
 const DEFAULT_PORT = 8788
@@ -149,7 +149,7 @@ export function startTemporalGateway(port = DEFAULT_PORT): void {
         }
 
         await client.workflow.start(generateVideoWorkflow, {
-          taskQueue: TASK_QUEUE,
+          taskQueue: resolveTaskQueue(),
           workflowId: body.workflowId,
           args: [input],
         })

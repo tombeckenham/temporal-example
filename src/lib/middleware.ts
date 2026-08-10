@@ -3,7 +3,6 @@ import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { getAuth } from '../auth/server.ts'
 import { createScopedDb } from '../db/scoped.ts'
-import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
 
 /**
  * Auth middleware for server functions: resolves the Better Auth session and
@@ -14,15 +13,6 @@ import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
  */
 export const authMiddleware = createMiddleware({ type: 'function' }).server(
   async ({ next }) => {
-    if (isAuthBypassed()) {
-      return next({
-        context: {
-          userId: E2E_USER_ID,
-          scopedDb: createScopedDb(E2E_USER_ID),
-        },
-      })
-    }
-
     const session = await getAuth().api.getSession({
       headers: getRequest().headers,
     })
@@ -44,10 +34,7 @@ export const jobOwnerMiddleware = createMiddleware({ type: 'function' })
   .middleware([authMiddleware])
   .validator(z.object({ workflowId: z.string().min(1) }))
   .server(async ({ next, data, context }) => {
-    if (
-      !isAuthBypassed() &&
-      !(await context.scopedDb.jobs.owns(data.workflowId))
-    ) {
+    if (!(await context.scopedDb.jobs.owns(data.workflowId))) {
       // Same message as a genuinely missing workflow — no existence probing
       throw new Error(`Workflow not found: ${data.workflowId}`)
     }

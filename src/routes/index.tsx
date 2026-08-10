@@ -15,8 +15,6 @@ import type {
 export const Route = createFileRoute('/')({
   component: Home,
   loader: async () => {
-    // E2E bypass is handled inside the server functions — this loader also
-    // runs in the browser, where process.env does not exist.
     const session = await getSessionFn()
     let jobs: VideoJobRow[] = []
     if (session?.user) {

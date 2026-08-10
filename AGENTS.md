@@ -83,9 +83,10 @@ bun run db:migrate            # apply (needs CREATE on public)
 bun run db:studio
 # NEVER bun run db:push against shared/prod DBs
 
-# E2E (Playwright + CopilotKit AIMock — no real xAI key)
-bun run test:e2e
+# E2E (Playwright + AIMock + isolated Postgres — no real xAI key)
+bun run test:e2e            # Docker Postgres per worktree (default)
 bun run test:e2e:ui
+bun run test:e2e:ps         # PlanetScale ephemeral/worktree branch
 
 # Build / deploy
 bun run build                 # Vite production build (NOT `bun build`)
@@ -125,7 +126,7 @@ STATUS_WEBHOOK_SECRET=...
 
 Wrangler secrets for production edge: `DATABASE_URL`, `BETTER_AUTH_*`, `STATUS_WEBHOOK_SECRET`, `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`.
 
-`XAI_API_KEY` lives on the **Node worker** (Fly/local), not in client bundles. E2E points the worker at AIMock via `XAI_BASE_URL`.
+`XAI_API_KEY` lives on the **Node worker** (Fly/local), not in client bundles. E2E points the worker at AIMock via `XAI_BASE_URL`. App e2e uses a worktree-local Docker Postgres (or PlanetScale branch in CI), not a shared long-lived test DB.
 
 ## Project layout
 
@@ -362,11 +363,14 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 
 ## Testing
 
-- **E2E (primary automated path today):** Playwright (`bun run test:e2e`).
-  - `e2e/prepare-dev-vars.ts` sets Workerd test env.
-  - `@copilotkit/aimock` mocks Grok chat + Imagine video.
-  - Worker must honor `XAI_BASE_URL` so activities hit AIMock, not `api.x.ai`.
-  - Happy path covers UI → Temporal → status push → completed video (`e2e/video-generation.spec.ts`).
+- **E2E (primary automated path today):** Playwright via `e2e/run.ts` (`bun run test:e2e`).
+  - Isolated app DB: Docker Postgres per worktree (default) or PlanetScale `e2e-*` branch (`E2E_DB_BACKEND=planetscale` / CI).
+  - Migrates this checkout only; truncates data each run; never shares schema across worktrees.
+  - Real Better Auth (DEV fixed OTP when `E2E_FIXED_OTP=1`) + `video_job` index.
+  - `@copilotkit/aimock` mocks Grok chat + Imagine video (`XAI_BASE_URL`).
+  - Happy path: sign-in → Temporal → JobRoom WS → completed (`e2e/video-generation.spec.ts`).
+  - Isolated from local dev: app **:3100**, gateway **:8789**, task queue
+    `video-generation-e2e` (dev keeps :3000 / :8788 / `video-generation`).
 - **Unit tests:** only if a critical pure path needs a guard; co-locate as `*.test.ts`. Prefer not growing large suites for demo UI.
 - **Boundaries:** edge/unit code must not import `@temporalio/*`. Workflow tests (if added) mock activities; never hit real xAI from CI.
 
@@ -377,7 +381,7 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 | Worker not running                         | Temporal execution **Running**, UI stuck             | `bun run worker` (or `dev:all`)                          |
 | Temporal server down                       | Gateway cannot connect to `:7233`                    | `bun run temporal:dev`                                   |
 | Gateway secret mismatch                    | Edge start returns **401**                           | Align `TEMPORAL_STARTER_SECRET` on edge + worker         |
-| Wrong / unset `STATUS_WEBHOOK_URL`         | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000`) |
+| Wrong / unset `STATUS_WEBHOOK_URL`         | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000` local; e2e uses `:3100`) |
 | HMAC secret mismatch                       | `/internal/job-events` **401**                       | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd        |
 | Value-import activities in workflow        | Bundle / replay breakage                             | `import type` only from activities                       |
 | Long sleep inside an activity              | Worker slots stuck / timeouts                        | `sleep` in the **workflow**; short activities            |

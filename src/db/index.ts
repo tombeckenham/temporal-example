@@ -26,11 +26,24 @@ function resolveDatabaseUrl(): string {
   return url.replace(/^['"]|['"]$/g, '')
 }
 
+function sslForUrl(url: string): 'require' | undefined {
+  // Local Docker e2e / localhost Postgres — no TLS
+  if (
+    url.includes('sslmode=disable') ||
+    /@(localhost|127\.0\.0\.1)[:/]/.test(url)
+  ) {
+    return undefined
+  }
+  return 'require'
+}
+
 function createClient() {
-  const sql = postgres(resolveDatabaseUrl(), {
+  const url = resolveDatabaseUrl()
+  const ssl = sslForUrl(url)
+  const sql = postgres(url, {
     prepare: false,
     max: 5,
-    ssl: 'require',
+    ...(ssl !== undefined ? { ssl } : {}),
   })
   return drizzle(sql, { schema })
 }

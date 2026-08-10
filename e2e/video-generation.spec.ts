@@ -1,11 +1,17 @@
 import { expect, test } from '@playwright/test'
+import { signInE2e } from './auth.ts'
+import { E2E_USER_EMAIL } from './constants.ts'
 
 /**
- * Critical-path E2E: UI → Temporal → AIMock (Grok) → JobRoom WebSocket → completed.
+ * Critical-path E2E: real auth + Postgres job index + Temporal + AIMock +
+ * JobRoom WebSocket → completed.
  * No real XAI_API_KEY; worker points at CopilotKit AIMock via XAI_BASE_URL.
+ * App DB is isolated per worktree (Docker) or CI run (PlanetScale).
  */
-test.describe('video generation (AIMock)', () => {
-  test('happy path: enhance → generate → completed video', async ({ page }) => {
+test.describe('video generation (AIMock + Postgres)', () => {
+  test('happy path: sign-in → enhance → generate → job row → completed video', async ({
+    page,
+  }) => {
     const consoleErrors: string[] = []
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text())
@@ -14,12 +20,15 @@ test.describe('video generation (AIMock)', () => {
       consoleErrors.push(err.message)
     })
 
+    await signInE2e(page)
+
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
     await expect(
       page.getByRole('heading', { name: /AI video at scale/i }),
     ).toBeVisible()
+    await expect(page.getByText(E2E_USER_EMAIL)).toBeVisible()
 
     const prompt =
       'E2E rocket launching from Mars dunes at golden hour — aimock fixture'
@@ -52,6 +61,11 @@ test.describe('video generation (AIMock)', () => {
       )
     }
 
+    const workflowIdText = (await workflowId.first().textContent())?.trim()
+    if (!workflowIdText) {
+      throw new Error('workflow id element empty')
+    }
+
     await expect(page.getByText('Video ready!')).toBeVisible({
       timeout: 90_000,
     })
@@ -66,5 +80,18 @@ test.describe('video generation (AIMock)', () => {
     ) {
       throw new Error(`unexpected video src: ${src}`)
     }
+
+    // Postgres job index: list includes this workflow (may need a moment for
+    // webhook status sync; the row itself is created at start).
+    await expect
+      .poll(
+        async () => {
+          // Prefer visible job id in the jobs list UI if present
+          const body = await page.locator('body').innerText()
+          return body.includes(workflowIdText)
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true)
   })
 })

@@ -46,4 +46,15 @@ export interface GenerateVideoResult {
   duration: number
 }
 
+/** Default Temporal task queue (local dev + production). */
 export const TASK_QUEUE = 'video-generation'
+
+/**
+ * Queue this process should poll / start on.
+ * Override with TEMPORAL_TASK_QUEUE (e.g. `video-generation-e2e` for Playwright).
+ * Node-only — do not call from workflow sandbox code.
+ */
+export function resolveTaskQueue(): string {
+  const fromEnv = process.env['TEMPORAL_TASK_QUEUE']?.trim()
+  return fromEnv && fromEnv.length > 0 ? fromEnv : TASK_QUEUE
+}

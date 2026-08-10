@@ -16,7 +16,9 @@ declare namespace Cloudflare {
     /** Fallback for TEMPORAL_STARTER_URL (local gateway) */
     TEMPORAL_GATEWAY_URL?: string
     TEMPORAL_STARTER_SECRET?: string
-    E2E_BYPASS_AUTH?: string
+    /** DEV-only: fixed email OTP for Playwright (see auth/server.ts) */
+    E2E_FIXED_OTP?: string
+    E2E_TEST_SECRET?: string
     /** Cloudflare Email Service send binding */
     EMAIL?: {
       send: (opts: {
