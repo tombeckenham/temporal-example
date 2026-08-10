@@ -120,9 +120,14 @@ Browser ──HTTP► TanStack Start + Better Auth ──HTTP► Node gateway �
                     (users / sessions)            workflows + activities
                                                           │
                                            publishStatus ──► JobRoom
-                                           persistVideo  ──► R2 via edge
+                                           persistVideo  ──► edge (signed URL)
+                                                           edge streams → R2
                                            TanStack AI ──► xAI
 ```
+
+`persistVideo` posts only signed JSON (`workflowId` + provider `videoUrl`).
+The edge Worker fetches the provider URL and streams the body into the
+`VIDEOS` R2 binding — video bytes never buffer in the Node worker.
 
 ## E2E
 

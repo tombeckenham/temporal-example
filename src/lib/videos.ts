@@ -1,16 +1,31 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { getEnv } from './env.ts'
-import { sha256Hex, verifyBodySignature } from './internalAuth.ts'
+import { verifyBodySignature } from './internalAuth.ts'
 import { syncVideoJobFromStatus } from './jobSync.ts'
 
-/** Reject uploads whose timestamp is further than this from now (replay window). */
-const MAX_TIMESTAMP_SKEW_MS = 5 * 60_000
+export interface PersistVideoBody {
+  workflowId: string
+  videoUrl: string
+}
+
+function isPersistVideoBody(value: unknown): value is PersistVideoBody {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v['workflowId'] === 'string' &&
+    v['workflowId'].length > 0 &&
+    typeof v['videoUrl'] === 'string' &&
+    v['videoUrl'].length > 0
+  )
+}
 
 /**
- * POST /internal/videos — Temporal worker uploads completed video bytes.
- * Headers: X-Signature, X-Timestamp, X-Workflow-Id, Content-Type
- * Body: raw video bytes
- * Signature covers workflowId + timestamp + SHA-256(body) + content-type.
+ * POST /internal/videos — Temporal worker asks the edge to persist a completed
+ * video. Body is signed JSON metadata only (`workflowId` + provider `videoUrl`);
+ * the edge fetches the provider URL and streams the response body into the
+ * `VIDEOS` R2 binding — no full-file buffer on Node or in the Worker.
+ *
+ * HMAC: X-Signature: hex(hmac-sha256(body, STATUS_WEBHOOK_SECRET))
  */
 export async function handleVideoPersist(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
@@ -23,41 +38,48 @@ export async function handleVideoPersist(request: Request): Promise<Response> {
     return new Response('STATUS_WEBHOOK_SECRET not configured', { status: 500 })
   }
 
-  const workflowId = request.headers.get('X-Workflow-Id')
-  if (!workflowId) {
-    return new Response('X-Workflow-Id required', { status: 400 })
-  }
-
-  const timestamp = request.headers.get('X-Timestamp')
-  const ts = Number(timestamp)
-  if (
-    !timestamp ||
-    !Number.isFinite(ts) ||
-    Math.abs(Date.now() - ts) > MAX_TIMESTAMP_SKEW_MS
-  ) {
-    return new Response('Invalid or stale timestamp', { status: 401 })
-  }
-
-  const body = await request.arrayBuffer()
-  const contentType = request.headers.get('content-type') ?? 'video/mp4'
-  const bodyHash = await sha256Hex(body)
-  const signPayload = `${workflowId}:${timestamp}:${bodyHash}:${contentType}`
+  const bodyText = await request.text()
   const signature = request.headers.get('X-Signature')
-  const ok = await verifyBodySignature(secret, signPayload, signature)
+  const ok = await verifyBodySignature(secret, bodyText, signature)
   if (!ok) {
     return new Response('Invalid signature', { status: 401 })
   }
 
-  const key = `videos/${workflowId}.mp4`
-  await env.VIDEOS.put(key, body, {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(bodyText) as unknown
+  } catch {
+    return new Response('Invalid JSON', { status: 400 })
+  }
+
+  if (!isPersistVideoBody(parsed)) {
+    return new Response('Invalid persist body', { status: 400 })
+  }
+
+  const source = await fetch(parsed.videoUrl)
+  if (!source.ok || !source.body) {
+    return Response.json(
+      {
+        error: 'download_failed',
+        status: source.status,
+      },
+      { status: 422 },
+    )
+  }
+
+  const contentType = source.headers.get('content-type') ?? 'video/mp4'
+  const key = `videos/${parsed.workflowId}.mp4`
+
+  // Stream provider bytes straight into R2 — do not arrayBuffer() the body.
+  await env.VIDEOS.put(key, source.body, {
     httpMetadata: { contentType },
   })
 
   const publicUrl = new URL(request.url)
-  publicUrl.pathname = `/api/videos/${encodeURIComponent(workflowId)}`
+  publicUrl.pathname = `/api/videos/${encodeURIComponent(parsed.workflowId)}`
   publicUrl.search = ''
 
-  const id = env.JOB_ROOM.idFromName(workflowId)
+  const id = env.JOB_ROOM.idFromName(parsed.workflowId)
   const stub = env.JOB_ROOM.get(id)
   const prev = await stub.getStatus()
   const next: VideoWorkflowStatus = {
@@ -76,7 +98,7 @@ export async function handleVideoPersist(request: Request): Promise<Response> {
   })
 
   await syncVideoJobFromStatus({
-    workflowId,
+    workflowId: parsed.workflowId,
     status: 'completed',
     videoUrl: publicUrl.toString(),
     r2Key: key,

@@ -24,12 +24,6 @@ export async function signBody(secret: string, body: string): Promise<string> {
   return bytesToHex(sig)
 }
 
-/** SHA-256 digest as hex — used to bind binary bodies into signed payloads. */
-export async function sha256Hex(data: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return bytesToHex(digest)
-}
-
 export async function verifyBodySignature(
   secret: string,
   body: string,

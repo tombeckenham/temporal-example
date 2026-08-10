@@ -1,4 +1,4 @@
-import { sha256Hex, signBody } from '../../lib/internalAuth.ts'
+import { signBody } from '../../lib/internalAuth.ts'
 
 export interface PersistVideoInput {
   workflowId: string
@@ -6,8 +6,12 @@ export interface PersistVideoInput {
 }
 
 /**
- * Download provider video and POST bytes to the edge for R2 storage.
- * Edge returns a durable `/api/videos/:workflowId` URL and updates JobRoom.
+ * Ask the edge to pull the provider video into R2.
+ *
+ * The Node worker does **not** download or re-upload bytes — that would buffer
+ * full videos in worker memory and ship them over the webhook hop. The edge
+ * owns the `VIDEOS` R2 binding, so it fetches the provider URL and streams the
+ * body into `env.VIDEOS.put`. This activity only posts signed metadata.
  */
 export async function persistVideo(
   input: PersistVideoInput,
@@ -28,36 +32,31 @@ export async function persistVideo(
     )
   }
 
-  const source = await fetch(input.videoUrl)
-  if (!source.ok) {
-    // Mock / expired provider URLs: keep original URL so the workflow can complete
-    console.warn(
-      `[persistVideo] download failed (${source.status}) — keeping provider URL`,
-      input.videoUrl,
-    )
-    return { videoUrl: input.videoUrl }
-  }
-
-  const contentType = source.headers.get('content-type') ?? 'video/mp4'
-  const bytes = await source.arrayBuffer()
-  // Sign the body digest + a timestamp so the signature binds the actual
-  // content and cannot be replayed later with different bytes.
-  const timestamp = String(Date.now())
-  const bodyHash = await sha256Hex(bytes)
-  const signPayload = `${input.workflowId}:${timestamp}:${bodyHash}:${contentType}`
-  const signature = await signBody(secret, signPayload)
+  const body = JSON.stringify({
+    workflowId: input.workflowId,
+    videoUrl: input.videoUrl,
+  })
+  const signature = await signBody(secret, body)
 
   const url = baseUrl.replace(/\/$/, '') + '/internal/videos'
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'content-type': contentType,
+      'content-type': 'application/json',
       'X-Signature': signature,
-      'X-Timestamp': timestamp,
-      'X-Workflow-Id': input.workflowId,
     },
-    body: bytes,
+    body,
   })
+
+  // Edge could not fetch the provider URL (expired / AIMock placeholder).
+  // Keep the original so the workflow can still complete.
+  if (response.status === 422) {
+    console.warn(
+      '[persistVideo] edge could not download provider URL — keeping original',
+      input.videoUrl,
+    )
+    return { videoUrl: input.videoUrl }
+  }
 
   if (!response.ok) {
     const text = await response.text()
