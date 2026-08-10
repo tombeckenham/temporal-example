@@ -7,12 +7,7 @@
  * 5. Dispose DB + restore .dev.vars
  */
 import { execSync, spawn } from 'node:child_process'
-import {
-  copyFileSync,
-  existsSync,
-  readFileSync,
-  unlinkSync,
-} from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs'
 import {
   E2E_DB_STATE_PATH,
   E2E_DEV_VARS_BACKUP_PATH,

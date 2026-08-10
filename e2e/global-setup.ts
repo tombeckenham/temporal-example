@@ -167,7 +167,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   )
 
   return async () => {
-    console.log('[e2e] tearing down AIMock + e2e worker (dev worker untouched)…')
+    console.log(
+      '[e2e] tearing down AIMock + e2e worker (dev worker untouched)…',
+    )
     for (const child of children) {
       child.kill('SIGTERM')
     }

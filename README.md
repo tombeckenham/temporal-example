@@ -125,11 +125,11 @@ Requires Docker (local default). Provisions an isolated Postgres, migrates this
 checkout’s schema, signs in with a DEV-only fixed OTP, runs the full path
 (auth → job index → Temporal → AIMock → JobRoom). Isolated from local dev:
 
-| | Dev | E2E |
-|--|-----|-----|
-| App | `:3000` | `:3100` |
-| Temporal gateway | `:8788` | `:8789` |
-| Task queue | `video-generation` | `video-generation-e2e` |
+|                  | Dev                | E2E                    |
+| ---------------- | ------------------ | ---------------------- |
+| App              | `:3000`            | `:3100`                |
+| Temporal gateway | `:8788`            | `:8789`                |
+| Task queue       | `video-generation` | `video-generation-e2e` |
 
 Your `bun run worker` is left running. CI: `E2E_DB_BACKEND=planetscale` (or
 `test:e2e:ps`) with PlanetScale tokens; each run creates/deletes an `e2e-ci-*`

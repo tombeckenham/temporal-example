@@ -48,7 +48,9 @@ export async function reconcileAndMigrate(databaseUrl: string): Promise<void> {
       await sql.unsafe('DROP SCHEMA public CASCADE')
       await sql.unsafe('CREATE SCHEMA public')
     } else if (applied > 0 && sqlFiles().length < applied) {
-      console.log('[e2e:db] fewer SQL files than applied migrations; resetting schema')
+      console.log(
+        '[e2e:db] fewer SQL files than applied migrations; resetting schema',
+      )
       await sql.unsafe('DROP SCHEMA public CASCADE')
       await sql.unsafe('CREATE SCHEMA public')
     }

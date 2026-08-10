@@ -1,5 +1,10 @@
 import type { APIRequestContext, Page } from '@playwright/test'
-import { E2E_FIXED_OTP, E2E_PORTS, E2E_USER_EMAIL, E2E_USER_NAME } from './constants.ts'
+import {
+  E2E_FIXED_OTP,
+  E2E_PORTS,
+  E2E_USER_EMAIL,
+  E2E_USER_NAME,
+} from './constants.ts'
 
 const origin = `http://127.0.0.1:${E2E_PORTS.app}`
 
@@ -34,9 +39,7 @@ export async function signInE2eWithRequest(
     },
   )
   if (!send.ok()) {
-    throw new Error(
-      `send OTP failed: ${send.status()} ${await send.text()}`,
-    )
+    throw new Error(`send OTP failed: ${send.status()} ${await send.text()}`)
   }
 
   const signIn = await request.post(`${origin}/api/auth/sign-in/email-otp`, {

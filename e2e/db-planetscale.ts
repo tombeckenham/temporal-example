@@ -133,7 +133,15 @@ export async function setupPlanetScaleDatabase(): Promise<E2eDbState> {
   if (!branchExists(database, branch)) {
     console.log(`[e2e:db] creating PlanetScale branch ${branch}`)
     // --wait is not always paired with json; use text for create
-    pscaleText(['branch', 'create', database, branch, '--from', 'main', '--wait'])
+    pscaleText([
+      'branch',
+      'create',
+      database,
+      branch,
+      '--from',
+      'main',
+      '--wait',
+    ])
   } else {
     console.log(`[e2e:db] reusing PlanetScale branch ${branch}`)
   }

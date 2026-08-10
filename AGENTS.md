@@ -379,22 +379,22 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 
 ## Common pitfalls
 
-| Trap                                       | Symptom                                              | Fix                                                      |
-| ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------- |
-| Worker not running                         | Temporal execution **Running**, UI stuck             | `bun run worker` (or `dev:all`)                          |
-| Temporal server down                       | Gateway cannot connect to `:7233`                    | `bun run temporal:dev`                                   |
-| Gateway secret mismatch                    | Edge start returns **401**                           | Align `TEMPORAL_STARTER_SECRET` on edge + worker         |
+| Trap                                       | Symptom                                              | Fix                                                                              |
+| ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Worker not running                         | Temporal execution **Running**, UI stuck             | `bun run worker` (or `dev:all`)                                                  |
+| Temporal server down                       | Gateway cannot connect to `:7233`                    | `bun run temporal:dev`                                                           |
+| Gateway secret mismatch                    | Edge start returns **401**                           | Align `TEMPORAL_STARTER_SECRET` on edge + worker                                 |
 | Wrong / unset `STATUS_WEBHOOK_URL`         | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000` local; e2e uses `:3100`) |
-| HMAC secret mismatch                       | `/internal/job-events` **401**                       | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd        |
-| Value-import activities in workflow        | Bundle / replay breakage                             | `import type` only from activities                       |
-| Long sleep inside an activity              | Worker slots stuck / timeouts                        | `sleep` in the **workflow**; short activities            |
-| Workflow imports Node-only modules         | Worker bundle fails or non-determinism               | Keep I/O in activities; workflow-safe types only         |
-| Live job status only in Postgres           | Stale UI / write hotspot                             | JobRoom DO + WS; Postgres is secondary index             |
-| Provider video URL in UI long-term         | Broken playback later                                | Persist via R2 (`persistVideo` path)                     |
-| `XAI_API_KEY` in client                    | Secret leak                                          | Node activities only                                     |
-| Module-level DB/auth client on Workers     | Second request I/O errors                            | `perRequest` + `runInRequestScope`                       |
-| Hand-written `userId` filters in handlers  | Authz bugs / drift                                   | `context.scopedDb.*` only                                |
-| Server helpers co-exported with server fns | Postgres/auth in client bundle                       | Split modules (`jobSync.ts` vs `jobs.ts`)                |
+| HMAC secret mismatch                       | `/internal/job-events` **401**                       | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd                                |
+| Value-import activities in workflow        | Bundle / replay breakage                             | `import type` only from activities                                               |
+| Long sleep inside an activity              | Worker slots stuck / timeouts                        | `sleep` in the **workflow**; short activities                                    |
+| Workflow imports Node-only modules         | Worker bundle fails or non-determinism               | Keep I/O in activities; workflow-safe types only                                 |
+| Live job status only in Postgres           | Stale UI / write hotspot                             | JobRoom DO + WS; Postgres is secondary index                                     |
+| Provider video URL in UI long-term         | Broken playback later                                | Persist via R2 (`persistVideo` path)                                             |
+| `XAI_API_KEY` in client                    | Secret leak                                          | Node activities only                                                             |
+| Module-level DB/auth client on Workers     | Second request I/O errors                            | `perRequest` + `runInRequestScope`                                               |
+| Hand-written `userId` filters in handlers  | Authz bugs / drift                                   | `context.scopedDb.*` only                                                        |
+| Server helpers co-exported with server fns | Postgres/auth in client bundle                       | Split modules (`jobSync.ts` vs `jobs.ts`)                                        |
 
 ## Where to look
 
