@@ -46,7 +46,6 @@
     "@temporalio/worker": "^1.22.0",
     "@temporalio/workflow": "^1.22.0",
     "better-auth": "^1.6.26",
-    "better-sqlite3": "^13.0.3",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "nitro": "3.0.260610-beta",
@@ -64,7 +63,6 @@
     "@playwright/test": "^1.62.1",
     "@tanstack/devtools-vite": "^0.8.3",
     "@tanstack/router-cli": "^1.167.27",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.2.18",
@@ -81,8 +79,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "lightningcss",
-      "better-sqlite3"
+      "lightningcss"
     ]
   }
 }

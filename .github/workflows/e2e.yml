@@ -22,12 +22,30 @@ jobs:
         run: |
           curl -sSf https://temporal.download/cli.sh | sh
           echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          temporal --version
 
-      - name: Install PlanetScale CLI
+      - name: Setup pscale
+        uses: planetscale/setup-pscale-action@v1
+
+      - name: Verify PlanetScale secrets
+        env:
+          PLANETSCALE_ORG: ${{ secrets.PLANETSCALE_ORG }}
+          PLANETSCALE_DATABASE: ${{ secrets.PLANETSCALE_DATABASE }}
+          PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
+          PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
         run: |
-          curl -fsSL https://github.com/planetscale/cli/releases/latest/download/pscale_linux_amd64.tar.gz \
-            | tar -xz -C /usr/local/bin pscale
+          missing=0
+          for name in PLANETSCALE_ORG PLANETSCALE_DATABASE PLANETSCALE_SERVICE_TOKEN_ID PLANETSCALE_SERVICE_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set (add it under repo Settings → Secrets and variables → Actions)"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
           pscale version
+          echo "PlanetScale secrets present; pscale CLI ready"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -47,5 +65,5 @@ jobs:
           PLANETSCALE_DATABASE: ${{ secrets.PLANETSCALE_DATABASE }}
           PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
           PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
-          # e2e/run.ts starts Docker is skipped; AIMock + Temporal + e2e worker
-          # are started by global-setup. App is on :3100.
+          # e2e/run.ts prepares DB + .dev.vars; global-setup starts AIMock,
+          # Temporal (if needed), and the e2e worker. App is on :3100.
