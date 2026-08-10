@@ -1,4 +1,4 @@
-import { signBody } from '../../server/internalAuth.ts'
+import { signBody } from '../../lib/internalAuth.ts'
 import type { VideoWorkflowStatus } from '../types.ts'
 
 export interface PublishStatusInput {

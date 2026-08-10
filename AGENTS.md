@@ -1,3 +1,17 @@
+<!-- intent-skills:start -->
+
+## Skill Loading
+
+Before editing files for a substantial task:
+
+- Run `bunx @tanstack/intent@latest list` from the workspace root to see available local skills.
+- If a listed skill matches the task, run `bunx @tanstack/intent@latest load <package>#<skill>` before changing files.
+- Use the loaded `SKILL.md` guidance while making the change.
+- Monorepos: when working across packages, run the skill check from the workspace root and prefer the local skill for the package being changed.
+- Multiple matches: prefer the most specific local skill for the package or concern you are changing; load additional skills only when the task spans multiple packages or concerns.
+
+<!-- intent-skills:end -->
+
 # AGENTS.md — video-at-scale
 
 Guidance for coding agents working in this repo.
@@ -14,8 +28,6 @@ Guidance for coding agents working in this repo.
 6. Activities **publish status** to a Cloudflare **JobRoom Durable Object** (HMAC webhook)
 7. UI receives **real-time updates over WebSocket** (hibernating DO sockets)
 
-Stack:
-
 | Layer           | Tech                                                                          |
 | --------------- | ----------------------------------------------------------------------------- |
 | App             | TanStack Start + Cloudflare Vite plugin (Workers)                             |
@@ -24,36 +36,69 @@ Stack:
 | Video engine    | Grok Imagine via xAI API                                                      |
 | Orchestration   | Temporal TypeScript SDK + **Temporal Cloud** (or local for dev)               |
 | Worker host     | **Node process** (not CF Workers) — Fly/Render/local                          |
-| Package manager | Bun                                                                           |
+| Package manager | Bun (launcher); Node is the Temporal worker runtime                           |
+
+**Critical facts (do not invent alternatives):**
+
+- **1 JobRoom DO per `workflowId`** — never a global status hub
+- **Product UI does not poll Temporal** — WebSocket + optional job list APIs
+- **Postgres is an index / auth store**, not the live status path
+- **Temporal workers never run on CF Workers** — long-lived Node + gRPC
+- **Edge never imports `@temporalio/*`** — HTTP gateway only
+- **Provider video URLs expire** — R2 persistence is the durable path
+- **`XAI_API_KEY` never goes in client code** — activities / Node worker only
+
+## Setup / first run
+
+Local loop always needs **three processes**: Temporal server, Node worker (+ gateway `:8788`), Vite/Workerd (`:3000`).
+
+```bash
+bun install
+# Copy secrets into .env.local + .dev.vars (see Environment)
+bun run db:migrate
+bun run dev:all          # temporal:dev + worker + vite
+# App: http://localhost:3000 · Temporal UI: http://localhost:8233
+```
+
+Before starting anything: check whether `:3000`, `:8788`, or `:7233` are already up — do not stack duplicate dev servers.
 
 ## Commands
 
 ```bash
-bun install
-
-# All three processes (preferred for local)
+# Dev
 bun run dev:all               # temporal:dev + worker (gateway :8788) + vite :3000
-
-# Or separately:
-bun run temporal:dev          # Temporal CLI (or: temporal:docker)
+bun run temporal:dev          # local Temporal (or: temporal:docker)
 bun run worker                # workflows + activities + HTTP gateway
-bun run dev                   # http://localhost:3000 (workerd via CF vite plugin)
+bun run dev                   # http://localhost:3000 (Workerd via CF vite plugin)
 
-bun run build && bun run deploy   # Cloudflare Workers
-bun run cf-typegen                # regenerate Worker Env types
+# Quality
+bun run typecheck             # tsc --noEmit (package script — use this, not ad-hoc flags)
+bun run lint
+bun run format
+bun run check                 # prettier --check
 
-# E2E (CopilotKit AIMock — no real xAI key)
+# DB (Postgres / PlanetScale via Drizzle — not D1)
+bun run db:generate           # migration from schema edits
+bun run db:migrate            # apply (needs CREATE on public)
+bun run db:studio
+# NEVER bun run db:push against shared/prod DBs
+
+# E2E (Playwright + CopilotKit AIMock — no real xAI key)
 bun run test:e2e
+bun run test:e2e:ui
+
+# Build / deploy
+bun run build                 # Vite production build (NOT `bun build`)
+bun run deploy                # build + wrangler deploy (edge Worker only)
+bun run cf-typegen            # regenerate Worker Env types
+# Node Temporal worker deploys separately (fly.toml / Dockerfile.worker)
 ```
 
-Typecheck: `bun run typecheck` (`tsc --noEmit`).
-
-E2E uses `@copilotkit/aimock` to mock Grok chat + Imagine video. Activities honor
-`XAI_BASE_URL` so the worker talks to AIMock instead of `api.x.ai`.
+**Anti-commands:** do not use `bun build` for the app; do not use `db:push` on shared DBs; do not run Temporal inside the Worker isolate.
 
 ## Environment
 
-`.env.local` (gitignored via `*.local`) + `.dev.vars` for workerd:
+`.env.local` (gitignored via `*.local`) for Node worker + scripts; `.dev.vars` for Workerd bindings/secrets.
 
 ```bash
 XAI_API_KEY=xai-...
@@ -68,7 +113,7 @@ TEMPORAL_NAMESPACE=default
 TEMPORAL_STARTER_SECRET=...
 TEMPORAL_STARTER_URL=http://127.0.0.1:8788
 
-# Node → JobRoom status push
+# Node → JobRoom status push (Workerd origin in local dev)
 STATUS_WEBHOOK_URL=http://127.0.0.1:3000
 STATUS_WEBHOOK_SECRET=...
 
@@ -78,11 +123,9 @@ STATUS_WEBHOOK_SECRET=...
 # TEMPORAL_TLS_KEY_PATH=...
 ```
 
-Wrangler secrets for production: `DATABASE_URL`, `BETTER_AUTH_*`, `STATUS_WEBHOOK_SECRET`, `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`.
+Wrangler secrets for production edge: `DATABASE_URL`, `BETTER_AUTH_*`, `STATUS_WEBHOOK_SECRET`, `TEMPORAL_STARTER_URL`, `TEMPORAL_STARTER_SECRET`.
 
-Never put `XAI_API_KEY` in client code. Only activities / Node worker may call xAI.
-
-Schema: `bun run db:migrate` (needs PlanetScale role with CREATE on `public`; do not use `db:push`).
+`XAI_API_KEY` lives on the **Node worker** (Fly/local), not in client bundles. E2E points the worker at AIMock via `XAI_BASE_URL`.
 
 ## Project layout
 
@@ -91,12 +134,15 @@ src/
   server.ts               # CF Worker entry (WS + webhooks + TanStack)
   durable-objects/
     JobRoom.ts            # Per-workflow status + WS hibernation (+ AI run storage)
-  server/
+  lib/
     video.ts              # createServerFn: start via Temporal gateway
-    jobs.ts               # listMyJobs + Postgres video_job sync
-    jobEvents.ts          # HMAC webhook + WS routing
+    jobs.ts               # listMyJobsFn + scoped job reads
+    jobSync.ts            # unscoped job writes for internal webhook
+    jobEvents.ts          # HMAC webhook → JobRoom
     videos.ts             # R2 persist + GET
     internalAuth.ts       # HMAC sign/verify
+    middleware.ts         # authMiddleware, jobOwnerMiddleware, scopedDb
+    requestScope.ts       # per-request DB/auth scope (Workers)
   auth/                   # Better Auth email OTP
   routes/                 # TanStack Router UI
   temporal/
@@ -109,6 +155,8 @@ src/
   persistence/
     jobRoomAdapter.ts     # TanStack AI generation store → JobRoom DO
   db/                     # Drizzle + Postgres (Better Auth + video_job index)
+    scoped/               # user-scoped queries (only path handlers should use)
+e2e/                      # Playwright
 wrangler.jsonc
 fly.toml                  # Node worker deploy (Fly.io)
 Dockerfile.worker
@@ -117,35 +165,128 @@ Dockerfile.worker
 ## Architecture rules (scale)
 
 - **1 JobRoom DO per `workflowId`** — never a global status hub
-- **Clients do not poll Temporal** — WebSocket + optional `GET /api/jobs/:id`
-- **D1 is not the live status path** — optional secondary indexes only
+- **Clients do not poll Temporal** — WebSocket + optional list/status server fns
+- **Live status is not Postgres** — optional secondary index via `jobSync` only
 - **Temporal workers never run on CF Workers** — long-lived Node + gRPC
-- **Edge never imports `@temporalio/*`** — HTTP gateway only
+- **Edge never imports `@temporalio/*`** — `fetch` to gateway only
 - **xAI is poll-based today** — durable poll stays in the workflow; edge gets push via webhook
 
-## Temporal mental model (keep this clear)
+## Temporal mental model
 
 - **Workflows** (`src/temporal/workflows/`):
   - Must be **deterministic** (no `fetch`, no `Date.now()`, no random, no Node APIs)
-  - Orchestrate activities with `proxyActivities`, `sleep`, queries/signals
-  - Survive process restarts via event history replay
+  - Orchestrate with `proxyActivities`, `sleep`, queries/signals
+  - Survive restarts via event history replay
+  - **Only `import type`** from activities — value imports break the workflow bundle
 
 - **Activities** (`src/temporal/activities/`):
   - May do anything Node can do (HTTP, TanStack AI, disk)
   - Keep them **short** (one HTTP call). Poll loops belong in the **workflow** with `sleep`
   - `publishStatus` projects state to JobRoom for the UI
 
-- **Queries** (`statusQuery`):
-  - Ops / Temporal UI; product UI uses JobRoom
+- **Queries** (`statusQuery`): ops / Temporal UI; product UI uses JobRoom
 
-- **Worker**:
-  - Separate long-lived process (`bun run worker`)
-  - Also serves Temporal HTTP gateway on `:8788`
+- **Worker** (`bun run worker`): polls Temporal + serves HTTP gateway on `:8788`
 
-- **Client** (edge server functions):
-  - `fetch` to gateway `POST /workflows/start` only
+- **Edge client**: `POST /workflows/start` with `Authorization: Bearer $TEMPORAL_STARTER_SECRET` only
 
-Task queue name: `video-generation` (`TASK_QUEUE` in `types.ts`).
+Task queue: `video-generation` (`TASK_QUEUE` in `types.ts`).
+
+## Patterns
+
+### Start a video job (edge server fn)
+
+Steps: validate · auth middleware · optional Postgres index row · gateway start · surface errors.
+
+```typescript
+// src/lib/video.ts (shape)
+export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
+  .validator(generateVideoInputSchema)
+  .handler(async ({ data, context }) => {
+    const workflowId = newId()
+    await context.scopedDb.jobs.create({ workflowId, prompt: data.prompt })
+
+    const response = await starterFetch('/workflows/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        workflowId,
+        prompt: data.prompt,
+        duration: data.duration,
+        size: data.size,
+        enhancePrompt: data.enhancePrompt,
+      }),
+    })
+    if (!response.ok) {
+      await context.scopedDb.jobs.markFailed(workflowId)
+      throw new Error(`Failed to start workflow (${response.status})`)
+    }
+    return { workflowId: (await response.json()).workflowId }
+  })
+```
+
+### Workflow (deterministic) + project status
+
+```typescript
+// import type only — never value-import activities
+import type * as activities from '../activities/index.ts'
+
+const { enhancePrompt, startVideoJob, pollVideoJob, persistVideo } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes' /* … */,
+  })
+
+const { publishStatus } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '30 seconds',
+  /* status publishes get their own retry policy */
+})
+
+// Poll in the workflow, not inside an activity:
+await sleep('5 seconds')
+const result = await pollVideoJob(jobId)
+```
+
+### Activity → JobRoom (status push)
+
+```typescript
+// publishStatus activity → POST $STATUS_WEBHOOK_URL/internal/job-events
+// HMAC: X-Signature: hex(hmac-sha256(body, STATUS_WEBHOOK_SECRET))
+// handleJobEvents verifies → routes to JobRoom DO by workflowId → WS broadcast
+```
+
+### JobRoom
+
+- DO id / name keyed by **`workflowId`**
+- Hibernating WebSockets for UI
+- Accepts status from internal webhook only (HMAC), not from untrusted clients
+
+## Wiring checklists
+
+### New Temporal activity
+
+1. Implement in `src/temporal/activities/`
+2. Re-export from `src/temporal/activities/index.ts` (worker registers `* as activities`)
+3. `proxyActivities` in the workflow (**`import type` only** from activities)
+4. If UI-visible: call `publishStatus` with the right `phase` / message
+5. Keep activity short — no long `sleep` loops
+
+### Status path (worker → edge → UI)
+
+1. Activity signs body with `STATUS_WEBHOOK_SECRET`
+2. Posts to `STATUS_WEBHOOK_URL` + `/internal/job-events`
+3. `handleJobEvents` verifies HMAC, optionally syncs Postgres index
+4. Forwards into JobRoom DO for that `workflowId`
+5. DO broadcasts to hibernating WS clients
+
+Secrets must match on **both** Node worker env and Workerd (`.dev.vars` / wrangler secrets).
+
+### Start path (UI → Temporal)
+
+1. UI calls `startVideoWorkflowFn`
+2. Auth + `scopedDb.jobs.create` (when not e2e-bypassed)
+3. Edge `fetch` → gateway `POST /workflows/start` with bearer secret
+4. Gateway uses Temporal client (Node only) to start `generateVideoWorkflow`
+5. Worker picks up tasks on `video-generation`
 
 ## TanStack AI usage
 
@@ -153,7 +294,7 @@ Task queue name: `video-generation` (`TASK_QUEUE` in `types.ts`).
 - Video start: `generateVideo({ adapter: grokVideo('grok-imagine-video'), ... })`
 - Video poll: `getVideoJobStatus({ adapter, jobId })`
 - Persistence: JobRoom-backed generation store (`src/persistence/jobRoomAdapter.ts`)
-- Env: `XAI_API_KEY` (xAI / SpaceXAI API)
+- Env: `XAI_API_KEY` on the Node worker; optional `XAI_BASE_URL` for AIMock/e2e
 
 Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 
@@ -166,27 +307,98 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 - Prefer existing helpers; avoid duplication
 - Frontend: inline skeleton/loading UI in the component (no separate skeleton files)
 - Don't add large test suites for demos; cover critical paths only if needed
-- Check if localhost is already running before starting `bun dev`
-- Typecheck: `bun run typecheck` (or `bun tsgo --noEmit` if available)
+- Check if localhost is already running before starting `bun run dev` / `dev:all`
+- Typecheck: `bun run typecheck` (`tsc --noEmit` as defined in package.json)
+
+### Naming
+
+- **`createServerFn` results end in `Fn`** — `getSessionFn`, `listMyJobsFn`,
+  `startVideoWorkflowFn`. The call site reads as a network round trip, not a
+  local helper. Same for `createIsomorphicFn`.
+- `createMiddleware` results end in `Middleware` (`authMiddleware`), and
+  `createServerOnlyFn` results take no suffix (`getServerEnv`, `getCfBindings`).
+
+### Static imports only
+
+- **No `await import(...)`** in app code. Imports go at the top of the file, so
+  the module graph is visible to typecheck, lint and the bundler.
+- Dynamic import is allowed only for browser code-splitting of a genuinely
+  heavy client-side library, and in tests that need mock ordering.
+- Dynamic import is **not** the tool for keeping server code out of the client
+  bundle — module boundaries are. A module that a route component imports must
+  export _only_ server functions and types: TanStack Start compiles away
+  `.handler()` bodies, but a plain exported function keeps its imports in the
+  client graph and drags Postgres/Better Auth into the browser bundle. That is
+  why `syncVideoJobFromStatus` lives in `lib/jobSync.ts` rather than
+  alongside `listMyJobsFn` in `lib/jobs.ts`.
+- Guard rail: `dist/client` must stay free of `drizzle`, `postgres` and
+  server-side `better-auth` after `bun run build` (~400K).
+
+### Request-scoped state (Workers)
+
+- **Never cache anything that owns I/O in module scope.** Workers rejects use
+  of a socket or stream created by one request from another request's handler
+  ("Cannot perform I/O on behalf of a different request"), so a module-level
+  Postgres client fails on the _second_ request in an isolate.
+- `getDb()` and `getAuth()` are wrapped in `perRequest()`
+  (`lib/requestScope.ts`); the Workers entry opens the scope once per
+  request with `runInRequestScope()`.
+- Better Auth cannot be a module singleton here: its Drizzle adapter captures
+  the client it is constructed with.
+- Env: read `getEnv()` from `lib/env.ts` — the Workers env carries vars,
+  secrets _and_ object bindings (`EMAIL`, `HYPERDRIVE`), so it is a superset of
+  `process.env`. Never copy it into a module-level variable. The Node Temporal
+  worker is a separate process and reads `process.env` directly.
+
+### Database access
+
+- **Handlers never query with a hand-written user filter.** `authMiddleware`
+  puts a `context.scopedDb` on the request; use `context.scopedDb.jobs.*`, where
+  the `userId` predicate is applied in one place (`db/scoped/jobs.ts`).
+- Only `db/scoped/*`, `db/system.ts` and `auth/server.ts` may import `getDb`
+  — enforced by `no-restricted-imports` in `eslint.config.js`.
+- `db/system.ts` / internal webhook path: deliberately unscoped writes, authorized
+  by HMAC instead of session. Anything with a session user belongs in the scoped layer.
+
+## Testing
+
+- **E2E (primary automated path today):** Playwright (`bun run test:e2e`).
+  - `e2e/prepare-dev-vars.ts` sets Workerd test env.
+  - `@copilotkit/aimock` mocks Grok chat + Imagine video.
+  - Worker must honor `XAI_BASE_URL` so activities hit AIMock, not `api.x.ai`.
+  - Happy path covers UI → Temporal → status push → completed video (`e2e/video-generation.spec.ts`).
+- **Unit tests:** only if a critical pure path needs a guard; co-locate as `*.test.ts`. Prefer not growing large suites for demo UI.
+- **Boundaries:** edge/unit code must not import `@temporalio/*`. Workflow tests (if added) mock activities; never hit real xAI from CI.
 
 ## Common pitfalls
 
-1. **Worker not running** → workflows stay in Running with no progress
-2. **Temporal server down** → gateway fails connecting to `:7233`
-3. **Gateway secret mismatch** → edge start returns 401
-4. **STATUS_WEBHOOK_URL wrong** → UI WS stays on initial status (workflow still works)
-5. **Importing activities into workflows** → only `import type` from activities in workflow code
-6. **Long sleep inside an activity** → use workflow `sleep` instead
-7. **Video URLs expire** → provider-hosted; R2 persistence is the durable path
-8. **Workflow bundling** → workflows must not import Node-only modules
-9. **Putting live job status in D1** → write hotspot; use JobRoom DO
+| Trap                                       | Symptom                                              | Fix                                                      |
+| ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------- |
+| Worker not running                         | Temporal execution **Running**, UI stuck             | `bun run worker` (or `dev:all`)                          |
+| Temporal server down                       | Gateway cannot connect to `:7233`                    | `bun run temporal:dev`                                   |
+| Gateway secret mismatch                    | Edge start returns **401**                           | Align `TEMPORAL_STARTER_SECRET` on edge + worker         |
+| Wrong / unset `STATUS_WEBHOOK_URL`         | WS stays on initial status; workflow still completes | Point worker at Workerd origin (`http://127.0.0.1:3000`) |
+| HMAC secret mismatch                       | `/internal/job-events` **401**                       | Align `STATUS_WEBHOOK_SECRET` on worker + Workerd        |
+| Value-import activities in workflow        | Bundle / replay breakage                             | `import type` only from activities                       |
+| Long sleep inside an activity              | Worker slots stuck / timeouts                        | `sleep` in the **workflow**; short activities            |
+| Workflow imports Node-only modules         | Worker bundle fails or non-determinism               | Keep I/O in activities; workflow-safe types only         |
+| Live job status only in Postgres           | Stale UI / write hotspot                             | JobRoom DO + WS; Postgres is secondary index             |
+| Provider video URL in UI long-term         | Broken playback later                                | Persist via R2 (`persistVideo` path)                     |
+| `XAI_API_KEY` in client                    | Secret leak                                          | Node activities only                                     |
+| Module-level DB/auth client on Workers     | Second request I/O errors                            | `perRequest` + `runInRequestScope`                       |
+| Hand-written `userId` filters in handlers  | Authz bugs / drift                                   | `context.scopedDb.*` only                                |
+| Server helpers co-exported with server fns | Postgres/auth in client bundle                       | Split modules (`jobSync.ts` vs `jobs.ts`)                |
 
 ## Where to look
 
-- Workflow orchestration: `src/temporal/workflows/generateVideoWorkflow.ts`
-- Activities (AI + publish): `src/temporal/activities/`
-- Start API: `src/server/video.ts`
-- JobRoom DO: `src/durable-objects/JobRoom.ts`
-- Worker entry: `src/server.ts`
-- UI: `src/routes/index.tsx`
-- Temporal UI (local): http://localhost:8233
+| Concern                   | Path                                                |
+| ------------------------- | --------------------------------------------------- |
+| Workflow orchestration    | `src/temporal/workflows/generateVideoWorkflow.ts`   |
+| Activities (AI + publish) | `src/temporal/activities/`                          |
+| Start API                 | `src/lib/video.ts`                                  |
+| JobRoom DO                | `src/durable-objects/JobRoom.ts`                    |
+| CF Worker entry           | `src/server.ts`                                     |
+| Temporal worker + gateway | `src/temporal/worker.ts`, `src/temporal/gateway.ts` |
+| UI                        | `src/routes/index.tsx`                              |
+| E2E                       | `e2e/video-generation.spec.ts`                      |
+| Temporal UI (local)       | http://localhost:8233                               |

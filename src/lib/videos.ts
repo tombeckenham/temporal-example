@@ -1,5 +1,7 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
+import { getEnv } from './env.ts'
 import { sha256Hex, verifyBodySignature } from './internalAuth.ts'
+import { syncVideoJobFromStatus } from './jobSync.ts'
 
 /** Reject uploads whose timestamp is further than this from now (replay window). */
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60_000
@@ -10,14 +12,12 @@ const MAX_TIMESTAMP_SKEW_MS = 5 * 60_000
  * Body: raw video bytes
  * Signature covers workflowId + timestamp + SHA-256(body) + content-type.
  */
-export async function handleVideoPersist(
-  request: Request,
-  env: Cloudflare.Env,
-): Promise<Response> {
+export async function handleVideoPersist(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
   }
 
+  const env = getEnv()
   const secret = env.STATUS_WEBHOOK_SECRET
   if (!secret) {
     return new Response('STATUS_WEBHOOK_SECRET not configured', { status: 500 })
@@ -75,7 +75,6 @@ export async function handleVideoPersist(
     updatedAt: new Date().toISOString(),
   })
 
-  const { syncVideoJobFromStatus } = await import('./jobs.ts')
   await syncVideoJobFromStatus({
     workflowId,
     status: 'completed',
@@ -91,12 +90,9 @@ export async function handleVideoPersist(
  * Ownership is enforced by the caller (server.ts → authorizeJobAccess), so
  * responses must stay private: shared caches would leak videos across users.
  */
-export async function handleVideoGet(
-  env: Cloudflare.Env,
-  workflowId: string,
-): Promise<Response> {
+export async function handleVideoGet(workflowId: string): Promise<Response> {
   const key = `videos/${workflowId}.mp4`
-  const object = await env.VIDEOS.get(key)
+  const object = await getEnv().VIDEOS.get(key)
   if (!object) {
     return new Response('Not found', { status: 404 })
   }

@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authClient } from '../auth/client.ts'
-import { listMyJobs } from '../server/jobs.ts'
-import type { VideoJobRow } from '../server/jobs.ts'
-import { getSession } from '../server/session.ts'
-import type { PublicSession } from '../server/session.ts'
-import { startVideoWorkflow } from '../server/video.ts'
+import { listMyJobsFn } from '../lib/jobs.ts'
+import type { VideoJobRow } from '../lib/jobs.ts'
+import { getSessionFn } from '../lib/session.ts'
+import type { PublicSession } from '../lib/session.ts'
+import { startVideoWorkflowFn } from '../lib/video.ts'
 import type {
   GenerateVideoInput,
   VideoPhase,
@@ -18,11 +18,11 @@ export const Route = createFileRoute('/')({
   loader: async () => {
     // E2E bypass is handled inside the server functions — this loader also
     // runs in the browser, where process.env does not exist.
-    const session = await getSession()
+    const session = await getSessionFn()
     let jobs: VideoJobRow[] = []
     if (session?.user) {
       try {
-        jobs = await listMyJobs({ data: { limit: 12 } })
+        jobs = await listMyJobsFn({ data: { limit: 12 } })
       } catch {
         jobs = []
       }
@@ -70,7 +70,11 @@ function Home() {
   const [size, setSize] = useState<VideoSize>('16:9_480p')
   const [enhancePrompt, setEnhancePrompt] = useState(true)
 
-  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  // Auto-resume: a refresh mid-generation reattaches to the newest running
+  // job — JobRoom pushes its last status snapshot on WebSocket connect.
+  const [workflowId, setWorkflowId] = useState<string | null>(
+    () => initialJobs.find((job) => job.status === 'running')?.id ?? null,
+  )
   const [status, setStatus] = useState<VideoWorkflowStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)
@@ -84,7 +88,7 @@ function Home() {
   const refreshJobs = useCallback(async () => {
     if (!session?.user) return
     try {
-      const next = await listMyJobs({ data: { limit: 12 } })
+      const next = await listMyJobsFn({ data: { limit: 12 } })
       setJobs(next)
     } catch {
       // listing is secondary — don't surface as primary error
@@ -212,7 +216,7 @@ function Home() {
         size,
         enhancePrompt,
       }
-      const { workflowId: id } = await startVideoWorkflow({ data: input })
+      const { workflowId: id } = await startVideoWorkflowFn({ data: input })
       setWorkflowId(id)
       void refreshJobs()
       setStatus({

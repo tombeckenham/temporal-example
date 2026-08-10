@@ -1,10 +1,10 @@
-import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
+import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { VIDEO_SIZES } from '../temporal/types.ts'
 import { isAuthBypassed } from './authBypass.ts'
+import { getEnv } from './env.ts'
 import { authMiddleware, jobOwnerMiddleware } from './middleware.ts'
 
 const generateVideoInputSchema = z.object({
@@ -18,60 +18,54 @@ const workflowIdSchema = z.object({
   workflowId: z.string().min(1, 'workflowId is required'),
 })
 
-function starterBaseUrl(): string {
-  return (
-    process.env['TEMPORAL_STARTER_URL'] ??
-    process.env['TEMPORAL_GATEWAY_URL'] ??
-    'http://127.0.0.1:8788'
-  )
-}
+const starterBaseUrl = createServerOnlyFn(() => {
+  const env = getEnv()
+  const url = env.TEMPORAL_STARTER_URL
+  if (!url) {
+    throw new Error(
+      'TEMPORAL_STARTER_URL is required (shared secret for edge → Temporal gateway)',
+    )
+  }
+  return url.replace(/\/$/, '')
+})
 
-function starterSecret(): string {
-  const secret = process.env['TEMPORAL_STARTER_SECRET']
+const starterSecret = createServerOnlyFn(() => {
+  const secret = getEnv()['TEMPORAL_STARTER_SECRET']
   if (!secret) {
     throw new Error(
       'TEMPORAL_STARTER_SECRET is required (shared secret for edge → Temporal gateway)',
     )
   }
   return secret
-}
+})
 
-async function starterFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const base = starterBaseUrl().replace(/\/$/, '')
-  return fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${starterSecret()}`,
-      'content-type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  })
-}
+const starterFetch = createServerOnlyFn(
+  async (path: string, init?: RequestInit): Promise<Response> => {
+    const base = starterBaseUrl()
+    return fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${starterSecret()}`,
+        'content-type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    })
+  },
+)
 
 /**
  * Start a video workflow via the Node Temporal gateway.
  * Auth is enforced by authMiddleware (bypassed only in dev e2e builds).
  */
-export const startVideoWorkflow = createServerFn({ method: 'POST' })
+export const startVideoWorkflowFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .validator(generateVideoInputSchema)
   .handler(async ({ data, context }) => {
-    const { userId } = context
     const workflowId = newId()
     const recordJob = !isAuthBypassed()
 
     if (recordJob) {
-      const { getDb } = await import('../db/index.ts')
-      const { videoJob } = await import('../db/schema.ts')
-      await getDb().insert(videoJob).values({
-        id: workflowId,
-        userId,
-        prompt: data.prompt,
-        status: 'running',
-      })
+      await context.scopedDb.jobs.create({ workflowId, prompt: data.prompt })
     }
 
     const response = await starterFetch('/workflows/start', {
@@ -87,12 +81,7 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
 
     if (!response.ok) {
       if (recordJob) {
-        const { getDb } = await import('../db/index.ts')
-        const { videoJob } = await import('../db/schema.ts')
-        await getDb()
-          .update(videoJob)
-          .set({ status: 'failed', updatedAt: new Date() })
-          .where(eq(videoJob.id, workflowId))
+        await context.scopedDb.jobs.markFailed(workflowId)
       }
       const text = await response.text()
       throw new Error(
@@ -108,7 +97,7 @@ export const startVideoWorkflow = createServerFn({ method: 'POST' })
  * Optional Temporal query via gateway (ops / fallback).
  * Auth + per-user ownership are enforced by jobOwnerMiddleware.
  */
-export const getVideoWorkflowStatus = createServerFn({ method: 'GET' })
+export const getVideoWorkflowStatusFn = createServerFn({ method: 'GET' })
   .middleware([jobOwnerMiddleware])
   .validator(workflowIdSchema)
   .handler(async ({ data }) => {

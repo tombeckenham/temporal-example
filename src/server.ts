@@ -8,14 +8,14 @@
  */
 import handler from '@tanstack/react-start/server-entry'
 import { JobRoom } from './durable-objects/JobRoom.ts'
-import { setCfEnv } from './server/cfEnv.ts'
-import { authorizeJobAccess } from './server/jobAccess.ts'
+import { authorizeJobAccess } from './lib/jobAccess.ts'
+import { runInRequestScope } from './lib/requestScope.ts'
 import {
   handleJobEvents,
   handleJobStatusHttp,
   handleJobWebSocket,
-} from './server/jobEvents.ts'
-import { handleVideoGet, handleVideoPersist } from './server/videos.ts'
+} from './lib/jobEvents.ts'
+import { handleVideoGet, handleVideoPersist } from './lib/videos.ts'
 
 export { JobRoom }
 
@@ -31,7 +31,6 @@ const WORKFLOW_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i
 
 type JobRouteHandler = (
   request: Request,
-  env: Cloudflare.Env,
   workflowId: string,
 ) => Promise<Response>
 
@@ -40,6 +39,7 @@ type JobRouteHandler = (
  * guards every entry uniformly: the param must be a ULID and the session
  * user must own the video_job row (authorizeJobAccess). Add new job routes
  * here — never as ad-hoc branches that could skip the guard.
+ * Handlers read bindings via getEnv() (lib/env.ts), not a threaded env param.
  */
 const jobRoutes: Array<{
   method: string
@@ -49,20 +49,18 @@ const jobRoutes: Array<{
   {
     method: 'GET',
     prefix: '/api/videos/',
-    handler: (_request, env, workflowId) => handleVideoGet(env, workflowId),
+    handler: (_request, workflowId) => handleVideoGet(workflowId),
   },
   {
     // WebSocket upgrades arrive as GET
     method: 'GET',
     prefix: '/ws/jobs/',
-    handler: (request, env, workflowId) =>
-      handleJobWebSocket(request, env, workflowId),
+    handler: handleJobWebSocket,
   },
   {
     method: 'GET',
     prefix: '/api/jobs/',
-    handler: (_request, env, workflowId) =>
-      handleJobStatusHttp(env, workflowId),
+    handler: (_request, workflowId) => handleJobStatusHttp(workflowId),
   },
 ]
 
@@ -73,64 +71,52 @@ const jobRoutes: Array<{
  */
 const internalRoutes: Array<{
   path: string
-  handler: (request: Request, env: Cloudflare.Env) => Promise<Response>
+  handler: (request: Request) => Promise<Response>
 }> = [
   { path: '/internal/job-events', handler: handleJobEvents },
   { path: '/internal/videos', handler: handleVideoPersist },
 ]
 
+/**
+ * Vars and secrets reach server code through process.env (populated by
+ * `nodejs_compat`) and object bindings through `cloudflare:workers` — see
+ * lib/env.ts (getEnv). Nothing is copied into module scope here: state set
+ * during one request is shared with every other request in the isolate.
+ */
+async function handleRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+
+  if (request.method === 'POST') {
+    for (const route of internalRoutes) {
+      if (url.pathname === route.path) {
+        return route.handler(request)
+      }
+    }
+  }
+
+  for (const route of jobRoutes) {
+    if (request.method !== route.method) continue
+    const workflowId = matchJobPath(url.pathname, route.prefix)
+    if (!workflowId) continue
+    if (!WORKFLOW_ID_RE.test(workflowId)) {
+      return new Response('Invalid workflow id', { status: 400 })
+    }
+    const denied = await authorizeJobAccess(request, workflowId)
+    if (denied) return denied
+    return route.handler(request, workflowId)
+  }
+
+  return handler.fetch(request)
+}
+
 export default {
-  async fetch(
+  fetch(
     request: Request,
-    env: Cloudflare.Env,
+    _env: Cloudflare.Env,
     _ctx: ExecutionContext,
   ): Promise<Response> {
-    const url = new URL(request.url)
-
-    // Non-string bindings (EMAIL, …) for code outside this handler
-    setCfEnv(env)
-
-    // Bindings → process.env so Better Auth / Drizzle see secrets on Workers
-    if (env.HYPERDRIVE?.connectionString) {
-      process.env['DATABASE_URL'] = env.HYPERDRIVE.connectionString
-    } else if (env.DATABASE_URL) {
-      process.env['DATABASE_URL'] = env.DATABASE_URL
-    }
-    if (env.BETTER_AUTH_SECRET)
-      process.env['BETTER_AUTH_SECRET'] = env.BETTER_AUTH_SECRET
-    if (env.BETTER_AUTH_URL)
-      process.env['BETTER_AUTH_URL'] = env.BETTER_AUTH_URL
-    if (env.EMAIL_FROM) process.env['EMAIL_FROM'] = env.EMAIL_FROM
-    if (env.EMAIL_MODE) process.env['EMAIL_MODE'] = env.EMAIL_MODE
-    if (env.STATUS_WEBHOOK_SECRET)
-      process.env['STATUS_WEBHOOK_SECRET'] = env.STATUS_WEBHOOK_SECRET
-    if (env.TEMPORAL_STARTER_URL)
-      process.env['TEMPORAL_STARTER_URL'] = env.TEMPORAL_STARTER_URL
-    if (env.TEMPORAL_STARTER_SECRET)
-      process.env['TEMPORAL_STARTER_SECRET'] = env.TEMPORAL_STARTER_SECRET
-    if (env.E2E_BYPASS_AUTH)
-      process.env['E2E_BYPASS_AUTH'] = env.E2E_BYPASS_AUTH
-
-    if (request.method === 'POST') {
-      for (const route of internalRoutes) {
-        if (url.pathname === route.path) {
-          return route.handler(request, env)
-        }
-      }
-    }
-
-    for (const route of jobRoutes) {
-      if (request.method !== route.method) continue
-      const workflowId = matchJobPath(url.pathname, route.prefix)
-      if (!workflowId) continue
-      if (!WORKFLOW_ID_RE.test(workflowId)) {
-        return new Response('Invalid workflow id', { status: 400 })
-      }
-      const denied = await authorizeJobAccess(request, workflowId)
-      if (denied) return denied
-      return route.handler(request, env, workflowId)
-    }
-
-    return handler.fetch(request)
+    // Every getDb() / getAuth() below this point shares one instance, and that
+    // instance dies with the request — Workers rejects I/O created by another.
+    return runInRequestScope(() => handleRequest(request))
   },
 }

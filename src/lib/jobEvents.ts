@@ -1,5 +1,7 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
+import { getEnv } from './env.ts'
 import { verifyBodySignature } from './internalAuth.ts'
+import { syncVideoJobFromStatus } from './jobSync.ts'
 
 export interface JobEventBody {
   workflowId: string
@@ -22,14 +24,12 @@ function isJobEventBody(value: unknown): value is JobEventBody {
  * POST /internal/job-events — Temporal activity publishes status here.
  * HMAC: X-Signature: hex(hmac-sha256(body, STATUS_WEBHOOK_SECRET))
  */
-export async function handleJobEvents(
-  request: Request,
-  env: Cloudflare.Env,
-): Promise<Response> {
+export async function handleJobEvents(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
   }
 
+  const env = getEnv()
   const secret = env.STATUS_WEBHOOK_SECRET
   if (!secret) {
     return new Response('STATUS_WEBHOOK_SECRET not configured', { status: 500 })
@@ -63,7 +63,6 @@ export async function handleJobEvents(
   // Keep Postgres job index in sync for "my videos" listing (not the live UX path)
   const phase = parsed.status.phase
   if (phase === 'completed' || phase === 'failed') {
-    const { syncVideoJobFromStatus } = await import('./jobs.ts')
     const sync: {
       workflowId: string
       status: string
@@ -81,21 +80,21 @@ export async function handleJobEvents(
 
 export async function handleJobWebSocket(
   request: Request,
-  env: Cloudflare.Env,
   workflowId: string,
 ): Promise<Response> {
   if (!workflowId) {
     return new Response('workflowId required', { status: 400 })
   }
+  const env = getEnv()
   const id = env.JOB_ROOM.idFromName(workflowId)
   const stub = env.JOB_ROOM.get(id)
   return stub.fetch(request)
 }
 
 export async function handleJobStatusHttp(
-  env: Cloudflare.Env,
   workflowId: string,
 ): Promise<Response> {
+  const env = getEnv()
   const id = env.JOB_ROOM.idFromName(workflowId)
   const stub = env.JOB_ROOM.get(id)
   const status = await stub.getStatus()
