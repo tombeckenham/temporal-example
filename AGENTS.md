@@ -99,7 +99,7 @@ bun run cf-typegen            # regenerate Worker Env types
 parallel `deploy-edge` (Cloudflare) and `deploy-worker` (Fly). Only GitHub
 secret: `DOPPLER_TOKEN`. Doppler `video-at-scale` / `prd` is the SoT; CI runs
 `secrets:sync-edge` / `secrets:sync-fly` before each platform deploy so Workers
-and Fly get runtime secrets (`scripts/sync-secrets.mjs`).
+and Fly get runtime secrets (`scripts/sync-secrets.ts`, run with bun).
 
 **Anti-commands:** do not use `bun build` for the app; do not use `db:push` on shared DBs; do not run Temporal inside the Worker isolate.
 

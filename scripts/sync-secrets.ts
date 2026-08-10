@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Project Doppler (or env) secrets onto platform runtimes.
  *
@@ -6,9 +5,9 @@
  * CI / ops path that keeps their secret stores in sync with the SoT.
  *
  * Usage (env must already contain the values — typically via doppler run):
- *   node scripts/sync-secrets.mjs edge
- *   node scripts/sync-secrets.mjs fly
- *   node scripts/sync-secrets.mjs all
+ *   bun scripts/sync-secrets.ts edge
+ *   bun scripts/sync-secrets.ts fly
+ *   bun scripts/sync-secrets.ts all
  *
  * Never logs secret values.
  */
@@ -25,7 +24,7 @@ const EDGE_KEYS = [
   'STATUS_WEBHOOK_SECRET',
   'TEMPORAL_STARTER_URL',
   'TEMPORAL_STARTER_SECRET',
-]
+] as const
 
 /** Node Temporal worker (Fly) — xAI, Temporal Cloud, status push to edge. */
 const FLY_KEYS = [
@@ -36,25 +35,28 @@ const FLY_KEYS = [
   'TEMPORAL_STARTER_SECRET',
   'STATUS_WEBHOOK_URL',
   'STATUS_WEBHOOK_SECRET',
-]
+] as const
 
-function requireKeys(keys, label) {
+type SecretKey = (typeof EDGE_KEYS)[number] | (typeof FLY_KEYS)[number]
+
+function requireKeys(keys: readonly string[], label: string): void {
   const missing = keys.filter((k) => {
     const v = process.env[k]
     return v === undefined || v === ''
   })
   if (missing.length > 0) {
-    console.error(`[sync-secrets] ${label}: missing required env: ${missing.join(', ')}`)
+    console.error(
+      `[sync-secrets] ${label}: missing required env: ${missing.join(', ')}`,
+    )
     process.exit(1)
   }
 }
 
-function payload(keys) {
-  /** @type {Record<string, string>} */
-  const out = {}
+function payload(keys: readonly SecretKey[]): Record<string, string> {
+  const out: Record<string, string> = {}
   for (const k of keys) {
     const v = process.env[k]
-    if (v === undefined) {
+    if (v === undefined || v === '') {
       throw new Error(`missing ${k}`)
     }
     out[k] = v
@@ -62,7 +64,11 @@ function payload(keys) {
   return out
 }
 
-function run(cmd, args, opts = {}) {
+function run(
+  cmd: string,
+  args: string[],
+  opts: { input?: string } = {},
+): void {
   const result = spawnSync(cmd, args, {
     stdio: opts.input !== undefined ? ['pipe', 'inherit', 'inherit'] : 'inherit',
     input: opts.input,
@@ -70,16 +76,21 @@ function run(cmd, args, opts = {}) {
     encoding: 'utf8',
   })
   if (result.error) {
-    console.error(`[sync-secrets] failed to spawn ${cmd}:`, result.error.message)
+    console.error(
+      `[sync-secrets] failed to spawn ${cmd}:`,
+      result.error.message,
+    )
     process.exit(1)
   }
   if (result.status !== 0) {
-    console.error(`[sync-secrets] ${cmd} ${args.join(' ')} exited ${result.status}`)
+    console.error(
+      `[sync-secrets] ${cmd} ${args.join(' ')} exited ${result.status}`,
+    )
     process.exit(result.status ?? 1)
   }
 }
 
-function syncEdge() {
+function syncEdge(): void {
   requireKeys(EDGE_KEYS, 'edge')
   requireKeys(['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'], 'edge auth')
 
@@ -92,7 +103,7 @@ function syncEdge() {
   console.log('[sync-secrets] edge: ok')
 }
 
-function syncFly() {
+function syncFly(): void {
   requireKeys(FLY_KEYS, 'fly')
   requireKeys(['FLY_API_TOKEN'], 'fly auth')
 
@@ -119,6 +130,6 @@ if (target === 'edge') {
   syncEdge()
   syncFly()
 } else {
-  console.error('Usage: node scripts/sync-secrets.mjs [edge|fly|all]')
+  console.error('Usage: bun scripts/sync-secrets.ts [edge|fly|all]')
   process.exit(1)
 }
