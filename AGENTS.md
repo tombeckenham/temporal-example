@@ -92,8 +92,13 @@ bun run test:e2e:ps         # PlanetScale ephemeral/worktree branch
 bun run build                 # Vite production build (NOT `bun build`)
 bun run deploy                # build + wrangler deploy (edge Worker only)
 bun run cf-typegen            # regenerate Worker Env types
-# Node Temporal worker deploys separately (fly.toml / Dockerfile.worker)
+# Node Temporal worker: fly.toml / Dockerfile.worker (or CI on main)
 ```
+
+**CI deploy (push / workflow_dispatch on `main`):** after `checks` + `migrate`, parallel
+`deploy-edge` (Cloudflare) and `deploy-worker` (Fly). Needs Actions secrets
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FLY_API_TOKEN` (plus existing
+`DOPPLER_TOKEN` for migrate). Platform runtime secrets stay on wrangler/fly.
 
 **Anti-commands:** do not use `bun build` for the app; do not use `db:push` on shared DBs; do not run Temporal inside the Worker isolate.
 

@@ -81,19 +81,39 @@ bun run dev:all
 
 ## Deploy
 
-### Edge (Cloudflare Workers)
+Production deploys run from **GitHub Actions on `main`** (after checks + DB migrate):
+
+1. **migrate** — Drizzle against prod Postgres (Doppler `prd`)
+2. **deploy-edge** — Cloudflare Worker (`bun run deploy`)
+3. **deploy-worker** — Fly Temporal worker (`flyctl deploy --remote-only`)
+
+Edge and Fly deploys run in parallel after migrate. Manual re-run: Actions → **ci** → **Run workflow** (must be on `main`).
+
+### Required GitHub Actions secrets
+
+| Secret | Used by |
+| --- | --- |
+| `DOPPLER_TOKEN` | migrate (existing) |
+| `CLOUDFLARE_API_TOKEN` | edge deploy (Workers edit) |
+| `CLOUDFLARE_ACCOUNT_ID` | edge deploy |
+| `FLY_API_TOKEN` | worker deploy (`fly tokens create deploy -a video-at-scale-worker`) |
+
+Jobs use the **`production`** GitHub Environment (optional protection rules / reviewers).
+
+Runtime secrets (API keys, webhook secrets, etc.) stay on the platforms — **not** re-set every deploy:
+
+- Edge: `wrangler secret put …`
+- Fly: `fly secrets set …`
+
+### Manual / first-time
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tombeckenham/video-at-scale)
 
-Or from this repo:
-
 ```bash
+# Edge (local)
 bun run deploy
-```
 
-**Worker (Node)** — Fly.io (`fly.toml`) or Docker:
-
-```bash
+# Node worker (local)
 docker build -f Dockerfile.worker -t video-at-scale-worker .
 # or: fly launch && fly secrets set ... && fly deploy
 ```
