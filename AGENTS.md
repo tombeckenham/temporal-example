@@ -72,10 +72,10 @@ bun run worker                # workflows + activities + HTTP gateway
 bun run dev                   # http://localhost:3000 (Workerd via CF vite plugin)
 
 # Quality
-bun run typecheck             # tsc --noEmit (package script — use this, not ad-hoc flags)
-bun run lint
-bun run format
-bun run check                 # prettier --check
+bun run typecheck             # TypeScript 7 native tsc --noEmit
+bun run lint                  # oxlint
+bun run format                # oxfmt write + oxlint --fix
+bun run check                 # oxfmt --check
 
 # DB (Postgres / PlanetScale via Drizzle — not D1)
 bun run db:generate           # migration from schema edits
@@ -95,6 +95,8 @@ bun run cf-typegen            # regenerate Worker Env types
 ```
 
 **Anti-commands:** do not use `bun build` for the app; do not use `db:push` on shared DBs; do not run Temporal inside the Worker isolate.
+
+Typecheck uses TypeScript 7 native `tsc`. Lint/format uses oxlint + oxfmt (not ESLint/Prettier).
 
 ## Environment
 
@@ -308,7 +310,8 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 - Frontend: inline skeleton/loading UI in the component (no separate skeleton files)
 - Don't add large test suites for demos; cover critical paths only if needed
 - Check if localhost is already running before starting `bun run dev` / `dev:all`
-- Typecheck: `bun run typecheck` (`tsc --noEmit` as defined in package.json)
+- Typecheck: `bun run typecheck` (TypeScript 7 native `tsc --noEmit`)
+- Lint/format: oxlint + oxfmt (not ESLint/Prettier)
 
 ### Naming
 
@@ -356,7 +359,7 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
   puts a `context.scopedDb` on the request; use `context.scopedDb.jobs.*`, where
   the `userId` predicate is applied in one place (`db/scoped/jobs.ts`).
 - Only `db/scoped/*`, `db/system.ts` and `auth/server.ts` may import `getDb`
-  — enforced by `no-restricted-imports` in `eslint.config.js`.
+  — enforced by `no-restricted-imports` in `.oxlintrc.json`.
 - `db/system.ts` / internal webhook path: deliberately unscoped writes, authorized
   by HMAC instead of session. Anything with a session user belongs in the scoped layer.
 
