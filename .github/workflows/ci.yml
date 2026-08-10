@@ -5,8 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Re-run migrate + deploys for the tip of main without a new commit.
+  workflow_dispatch:
 
 permissions: {}
+
+# One pipeline at a time on main so deploys do not interleave.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:
@@ -42,7 +49,7 @@ jobs:
   # Apply drizzle migrations to prod Postgres (Doppler prd DATABASE_URL).
   # Only on main — never against prod from a PR.
   migrate:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -65,6 +72,112 @@ jobs:
 
       - name: Migrate database
         run: doppler run --project video-at-scale --config prd -- bun run db:migrate
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+  # Cloudflare Workers: UI, JobRoom DOs, auth, webhooks, R2, reconcile cron.
+  # Deploy credentials come from Doppler prd (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID).
+  deploy-edge:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    needs: [checks, migrate]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Verify Doppler edge secrets
+        run: |
+          missing=0
+          for name in \
+            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID \
+            DATABASE_URL BETTER_AUTH_SECRET BETTER_AUTH_URL \
+            EMAIL_FROM EMAIL_MODE STATUS_WEBHOOK_SECRET \
+            TEMPORAL_STARTER_URL TEMPORAL_STARTER_SECRET
+          do
+            if ! doppler secrets get "$name" --project video-at-scale --config prd --plain >/dev/null 2>&1; then
+              echo "::error::$name missing in Doppler project video-at-scale config prd"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Workers cannot read Doppler at runtime — push the edge secret set first.
+      - name: Sync edge secrets from Doppler
+        run: doppler run --project video-at-scale --config prd -- bun run secrets:sync-edge
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+      - name: Deploy edge Worker
+        run: doppler run --project video-at-scale --config prd -- bun run deploy
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+  # Node Temporal worker + HTTP gateway on Fly.io.
+  # Deploy credential: Doppler prd FLY_API_TOKEN.
+  deploy-worker:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    needs: [checks, migrate]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Verify Doppler Fly secrets
+        run: |
+          missing=0
+          for name in \
+            FLY_API_TOKEN XAI_API_KEY \
+            TEMPORAL_ADDRESS TEMPORAL_NAMESPACE TEMPORAL_API_KEY \
+            TEMPORAL_STARTER_SECRET STATUS_WEBHOOK_URL STATUS_WEBHOOK_SECRET
+          do
+            if ! doppler secrets get "$name" --project video-at-scale --config prd --plain >/dev/null 2>&1; then
+              echo "::error::$name missing in Doppler project video-at-scale config prd"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # Fly runtime env comes from `fly secrets`, not Doppler-at-runtime.
+      - name: Sync Fly secrets from Doppler
+        run: doppler run --project video-at-scale --config prd -- bun run secrets:sync-fly
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+      - name: Deploy Temporal worker
+        run: doppler run --project video-at-scale --config prd -- flyctl deploy --remote-only
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 

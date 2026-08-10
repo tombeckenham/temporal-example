@@ -81,19 +81,48 @@ bun run dev:all
 
 ## Deploy
 
-### Edge (Cloudflare Workers)
+Production deploys run from **GitHub Actions on `main`** (after checks + DB migrate):
+
+1. **migrate** — Drizzle against prod Postgres (Doppler `prd`)
+2. **deploy-edge** — Cloudflare Worker (`bun run deploy`)
+3. **deploy-worker** — Fly Temporal worker (`flyctl deploy --remote-only`)
+
+Edge and Fly deploys run in parallel after migrate. Manual re-run: Actions → **ci** → **Run workflow** (must be on `main`).
+
+### Secrets
+
+| Where              | What                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **GitHub Actions** | Only `DOPPLER_TOKEN` (service token for `video-at-scale` / `prd`)                                                                      |
+| **Doppler `prd`**  | App runtime **and** deploy creds: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FLY_API_TOKEN`, plus DB/auth/Temporal/xAI/webhooks |
+
+CI uses `doppler run --project video-at-scale --config prd -- …` for migrate and both deploys.
+
+Each deploy **projects runtime secrets** from Doppler before shipping code:
+
+1. **edge** — `bun run secrets:sync-edge` → `wrangler secret bulk` (DB, auth, email, Temporal starter, webhook HMAC)
+2. **fly** — `bun run secrets:sync-fly` → `flyctl secrets import` (xAI, Temporal Cloud, status webhook)
+
+Deploy-only tokens (`CLOUDFLARE_*`, `FLY_API_TOKEN`) are not written into either runtime.
+
+Jobs use the **`production`** GitHub Environment (optional protection rules / reviewers).
+
+Manual sync (local, with Doppler auth):
+
+```bash
+doppler run --project video-at-scale --config prd -- bun run secrets:sync-edge
+doppler run --project video-at-scale --config prd -- bun run secrets:sync-fly
+```
+
+### Manual / first-time
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tombeckenham/video-at-scale)
 
-Or from this repo:
-
 ```bash
+# Edge (local)
 bun run deploy
-```
 
-**Worker (Node)** — Fly.io (`fly.toml`) or Docker:
-
-```bash
+# Node worker (local)
 docker build -f Dockerfile.worker -t video-at-scale-worker .
 # or: fly launch && fly secrets set ... && fly deploy
 ```
