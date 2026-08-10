@@ -46,12 +46,13 @@
   //     "id": "<hyperdrive-config-id>",
   //   },
   // ],
-  // Secrets (wrangler secret put):
-  //   DATABASE_URL (if not using Hyperdrive), BETTER_AUTH_SECRET, BETTER_AUTH_URL,
-  //   STATUS_WEBHOOK_SECRET, TEMPORAL_STARTER_URL, TEMPORAL_STARTER_SECRET,
-  //   EMAIL_FROM, EMAIL_MODE
+  // Runtime secrets are projected from Doppler prd via:
+  //   doppler run -- … bun run secrets:sync-edge
+  // (CI deploy-edge does this before wrangler deploy.) Keys: DATABASE_URL,
+  // BETTER_AUTH_*, EMAIL_*, STATUS_WEBHOOK_SECRET, TEMPORAL_STARTER_*.
+  // EMAIL_MODE is a secret (prd=cf); local .dev.vars sets console.
   "vars": {
     "APP_NAME": "video-at-scale",
-    "EMAIL_MODE": "console",
   },
 }
+

@@ -98,12 +98,22 @@ Edge and Fly deploys run in parallel after migrate. Manual re-run: Actions → *
 
 CI uses `doppler run --project video-at-scale --config prd -- …` for migrate and both deploys.
 
+Each deploy **projects runtime secrets** from Doppler before shipping code:
+
+1. **edge** — `bun run secrets:sync-edge` → `wrangler secret bulk` (DB, auth, email, Temporal starter, webhook HMAC)
+2. **fly** — `bun run secrets:sync-fly` → `flyctl secrets import` (xAI, Temporal Cloud, status webhook)
+
+Deploy-only tokens (`CLOUDFLARE_*`, `FLY_API_TOKEN`) are not written into either runtime.
+
 Jobs use the **`production`** GitHub Environment (optional protection rules / reviewers).
 
-Runtime secrets still need to be projected onto the platforms (Workers/Fly cannot call Doppler at request time):
+Manual sync (local, with Doppler auth):
 
-- Edge: `wrangler secret put …` (or bulk sync from Doppler)
-- Fly: `fly secrets set …` / `fly secrets import`
+```bash
+doppler run --project video-at-scale --config prd -- bun run secrets:sync-edge
+doppler run --project video-at-scale --config prd -- bun run secrets:sync-fly
+```
+
 
 ### Manual / first-time
 

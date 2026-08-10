@@ -95,11 +95,11 @@ bun run cf-typegen            # regenerate Worker Env types
 # Node Temporal worker: fly.toml / Dockerfile.worker (or CI on main)
 ```
 
-**CI deploy (push / workflow_dispatch on `main`):** after `checks` + `migrate`, parallel
-`deploy-edge` (Cloudflare) and `deploy-worker` (Fly). Only GitHub secret:
-`DOPPLER_TOKEN`. Deploy + app secrets live in Doppler `video-at-scale` / `prd`
-(`CLOUDFLARE_*`, `FLY_API_TOKEN`, etc.). Platform runtime secrets still projected
-to wrangler/fly for process runtime.
+**CI deploy (push / workflow_dispatch on `main`):** after `checks` + `migrate`,
+parallel `deploy-edge` (Cloudflare) and `deploy-worker` (Fly). Only GitHub
+secret: `DOPPLER_TOKEN`. Doppler `video-at-scale` / `prd` is the SoT; CI runs
+`secrets:sync-edge` / `secrets:sync-fly` before each platform deploy so Workers
+and Fly get runtime secrets (`scripts/sync-secrets.mjs`).
 
 **Anti-commands:** do not use `bun build` for the app; do not use `db:push` on shared DBs; do not run Temporal inside the Worker isolate.
 

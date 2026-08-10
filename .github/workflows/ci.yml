@@ -97,10 +97,15 @@ jobs:
 
       - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
-      - name: Verify Doppler deploy secrets
+      - name: Verify Doppler edge secrets
         run: |
           missing=0
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+          for name in \
+            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID \
+            DATABASE_URL BETTER_AUTH_SECRET BETTER_AUTH_URL \
+            EMAIL_FROM EMAIL_MODE STATUS_WEBHOOK_SECRET \
+            TEMPORAL_STARTER_URL TEMPORAL_STARTER_SECRET
+          do
             if ! doppler secrets get "$name" --project video-at-scale --config prd --plain >/dev/null 2>&1; then
               echo "::error::$name missing in Doppler project video-at-scale config prd"
               missing=1
@@ -114,6 +119,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Workers cannot read Doppler at runtime — push the edge secret set first.
+      - name: Sync edge secrets from Doppler
+        run: doppler run --project video-at-scale --config prd -- bun run secrets:sync-edge
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
       - name: Deploy edge Worker
         run: doppler run --project video-at-scale --config prd -- bun run deploy
@@ -138,16 +149,32 @@ jobs:
 
       - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
-      - name: Verify Doppler Fly token
+      - name: Verify Doppler Fly secrets
         run: |
-          if ! doppler secrets get FLY_API_TOKEN --project video-at-scale --config prd --plain >/dev/null 2>&1; then
-            echo "::error::FLY_API_TOKEN missing in Doppler project video-at-scale config prd"
+          missing=0
+          for name in \
+            FLY_API_TOKEN XAI_API_KEY \
+            TEMPORAL_ADDRESS TEMPORAL_NAMESPACE TEMPORAL_API_KEY \
+            TEMPORAL_STARTER_SECRET STATUS_WEBHOOK_URL STATUS_WEBHOOK_SECRET
+          do
+            if ! doppler secrets get "$name" --project video-at-scale --config prd --plain >/dev/null 2>&1; then
+              echo "::error::$name missing in Doppler project video-at-scale config prd"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
             exit 1
           fi
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # Fly runtime env comes from `fly secrets`, not Doppler-at-runtime.
+      - name: Sync Fly secrets from Doppler
+        run: doppler run --project video-at-scale --config prd -- bun run secrets:sync-fly
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
       - name: Deploy Temporal worker
         run: doppler run --project video-at-scale --config prd -- flyctl deploy --remote-only
