@@ -142,7 +142,7 @@ src/
     jobs.ts               # listMyJobsFn + scoped job reads
     jobSync.ts            # unscoped job writes for internal webhook
     jobEvents.ts          # HMAC webhook → JobRoom
-    videos.ts             # R2 persist + GET
+    videos.ts             # R2 persist (edge pull + stream) + GET
     internalAuth.ts       # HMAC sign/verify
     middleware.ts         # authMiddleware, jobOwnerMiddleware, scopedDb
     requestScope.ts       # per-request DB/auth scope (Workers)
