@@ -9,6 +9,10 @@ App that generates short AI videos from a text prompt:
 5. Completed videos are downloaded and stored in **R2** (when the provider URL is fetchable)
 6. Edge starts workflows via a Node HTTP gateway (no Temporal gRPC in Workers)
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tombeckenham/video-at-scale)
+
+Deploys the **edge Worker** (UI, JobRoom DOs, auth, webhooks, R2). You still need a separate **Node Temporal worker** (e.g. Fly / Docker) and Temporal Cloud + Postgres + secrets — see [Deploy](#deploy).
+
 ## Prerequisites
 
 - [Bun](https://bun.sh)
@@ -76,6 +80,12 @@ bun run dev:all
 3. Sign in → generate a video
 
 ## Deploy
+
+### Edge (Cloudflare Workers)
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tombeckenham/video-at-scale)
+
+Or from this repo:
 
 ```bash
 bun run deploy
