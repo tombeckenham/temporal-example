@@ -17,8 +17,9 @@
     "format": "oxfmt . && oxlint --fix .",
     "check": "oxfmt --check .",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "bun run e2e/prepare-dev-vars.ts && playwright test",
-    "test:e2e:ui": "bun run e2e/prepare-dev-vars.ts && playwright test --ui",
+    "test:e2e": "bun run e2e/run.ts",
+    "test:e2e:ui": "bun run e2e/run.ts -- --ui",
+    "test:e2e:ps": "E2E_DB_BACKEND=planetscale bun run e2e/run.ts",
     "worker": "tsx --env-file=.env.local src/temporal/worker.ts",
     "temporal:dev": "mkdir -p .temporal && temporal server start-dev --db-filename .temporal/dev.db --ui-port 8233",
     "temporal:docker": "docker compose up -d",
@@ -45,7 +46,6 @@
     "@temporalio/worker": "^1.22.0",
     "@temporalio/workflow": "^1.22.0",
     "better-auth": "^1.6.26",
-    "better-sqlite3": "^13.0.3",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "nitro": "3.0.260610-beta",
@@ -63,7 +63,6 @@
     "@playwright/test": "^1.62.1",
     "@tanstack/devtools-vite": "^0.8.3",
     "@tanstack/router-cli": "^1.167.27",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.2.18",
@@ -80,8 +79,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "lightningcss",
-      "better-sqlite3"
+      "lightningcss"
     ]
   }
 }

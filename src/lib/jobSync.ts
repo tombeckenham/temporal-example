@@ -1,5 +1,4 @@
 import { updateVideoJobStatus } from '../db/system.ts'
-import { isAuthBypassed } from './authBypass.ts'
 import { getEnv } from './env.ts'
 
 /**
@@ -18,7 +17,6 @@ export async function syncVideoJobFromStatus(input: {
   r2Key?: string
 }): Promise<void> {
   if (!getEnv()['DATABASE_URL']) return
-  if (isAuthBypassed()) return
 
   try {
     await updateVideoJobStatus(input)

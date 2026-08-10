@@ -28,7 +28,35 @@ function authBaseUrl(): string {
   return getEnv()['BETTER_AUTH_URL'] ?? 'http://localhost:3000'
 }
 
+/**
+ * Playwright e2e uses a fixed OTP so tests can complete email sign-in without
+ * scraping logs. Only active when Vite DEV + E2E_FIXED_OTP=1 (set by e2e/run).
+ * Production bundles compile import.meta.env.DEV to false.
+ */
+function e2eFixedOtpEnabled(): boolean {
+  return import.meta.env.DEV && getEnv()['E2E_FIXED_OTP'] === '1'
+}
+
+const E2E_OTP = '424242'
+
 function createAuth() {
+  const emailOtpOptions = {
+    otpLength: 6,
+    expiresIn: 600,
+    async sendVerificationOTP({
+      email,
+      otp,
+      type,
+    }: {
+      email: string
+      otp: string
+      type: string
+    }) {
+      await sendOtpEmail({ to: email, otp, type })
+    },
+    ...(e2eFixedOtpEnabled() ? { generateOTP: () => E2E_OTP } : {}),
+  }
+
   return betterAuth({
     secret: authSecret(),
     baseURL: authBaseUrl(),
@@ -46,15 +74,7 @@ function createAuth() {
     emailAndPassword: {
       enabled: false,
     },
-    plugins: [
-      emailOTP({
-        otpLength: 6,
-        expiresIn: 600,
-        async sendVerificationOTP({ email, otp, type }) {
-          await sendOtpEmail({ to: email, otp, type })
-        },
-      }),
-    ],
+    plugins: [emailOTP(emailOtpOptions)],
   })
 }
 

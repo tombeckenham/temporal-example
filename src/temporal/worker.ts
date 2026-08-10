@@ -2,7 +2,7 @@ import { NativeConnection, Worker } from '@temporalio/worker'
 import { fileURLToPath } from 'node:url'
 import * as activities from './activities/index.ts'
 import { GATEWAY_DEFAULT_PORT, startTemporalGateway } from './gateway.ts'
-import { TASK_QUEUE, XAI_TASK_QUEUE } from './types.ts'
+import { resolveTaskQueue, XAI_TASK_QUEUE } from './types.ts'
 
 /**
  * Temporal Worker process (+ optional HTTP starter gateway for Cloudflare edge).
@@ -83,11 +83,13 @@ async function run() {
   const { enhancePrompt, startVideoJob, pollVideoJob, ...edgeActivities } =
     activities
 
+  const taskQueue = resolveTaskQueue()
+
   // Workflows + edge-facing activities (webhooks, persists) — unthrottled
   const worker = await Worker.create({
     connection,
     namespace,
-    taskQueue: TASK_QUEUE,
+    taskQueue,
     workflowsPath: fileURLToPath(
       new URL('./workflows/index.ts', import.meta.url),
     ),
@@ -107,7 +109,7 @@ async function run() {
   })
 
   console.log(
-    `Temporal workers listening on "${TASK_QUEUE}" and "${XAI_TASK_QUEUE}" (≤${xaiPerSecond}/s) at ${address} (ns=${namespace})`,
+    `Temporal workers listening on "${taskQueue}" and "${XAI_TASK_QUEUE}" (≤${xaiPerSecond}/s) at ${address} (ns=${namespace})`,
   )
 
   await Promise.all([worker.run(), xaiWorker.run()])

@@ -1,6 +1,5 @@
 import { getAuth } from '../auth/server.ts'
 import { createScopedDb } from '../db/scoped.ts'
-import { isAuthBypassed } from './authBypass.ts'
 
 /**
  * Per-user authorization for job status / video reads (/ws/jobs, /api/jobs,
@@ -11,8 +10,6 @@ export async function authorizeJobAccess(
   request: Request,
   workflowId: string,
 ): Promise<Response | null> {
-  if (isAuthBypassed()) return null
-
   const session = await getAuth().api.getSession({ headers: request.headers })
   const userId = session?.user.id
   if (!userId) {

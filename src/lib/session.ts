@@ -1,7 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { getAuth } from '../auth/server.ts'
-import { E2E_USER_ID, isAuthBypassed } from './authBypass.ts'
 
 export type PublicSession = {
   user: {
@@ -13,15 +12,6 @@ export type PublicSession = {
 
 export const getSessionFn = createServerFn({ method: 'GET' }).handler(
   async (): Promise<PublicSession> => {
-    if (isAuthBypassed()) {
-      return {
-        user: {
-          id: E2E_USER_ID,
-          email: 'e2e@example.com',
-          name: 'E2E User',
-        },
-      }
-    }
     const session = await getAuth().api.getSession({
       headers: getRequest().headers,
     })
