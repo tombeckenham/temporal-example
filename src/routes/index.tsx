@@ -45,6 +45,22 @@ const SIZE_OPTIONS = [
   { value: '1:1_480p', label: '1:1 · 480p' },
 ] as const
 
+/** Varied starter prompts for the shuffle button — silly, cinematic, and different video styles */
+const SAMPLE_PROMPTS = [
+  'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
+  'A corgi in a tiny astronaut suit floating through a space station, chasing a slice of pizza in zero gravity',
+  'A capybara barista carefully pouring latte art in a cozy Tokyo café, soft morning light through the window',
+  'Claymation stop-motion: a grumpy wizard burns his toast and accidentally sets his beard on fire',
+  'Macro timelapse of bioluminescent mushrooms sprouting on a mossy log, glowing spores drifting in the dark',
+  'A penguin strutting down a fashion runway in a tiny tuxedo while paparazzi flashbulbs pop',
+  'Grainy 80s VHS footage of a robot learning to skateboard in an empty mall parking lot',
+  'Drone dive off a snowy mountain ridge, chasing a wingsuit flyer through a narrow canyon at sunrise',
+  'A tiny dragon hatching from an egg on a library bookshelf, knocking over ink pots by candlelight',
+  'Film noir: a raccoon detective in a trench coat inspects a tipped-over trash can in the pouring rain',
+  'Anime style: a ramen delivery scooter weaving at high speed through neon-lit streets in the rain',
+  'Slow-motion rooftop water balloon fight between office workers in full business suits at golden hour',
+] as const
+
 type WsMessage =
   | { type: 'hello'; status: null }
   | {
@@ -63,9 +79,8 @@ function Home() {
   const [session, setSession] = useState<PublicSession>(initialSession)
   const [jobs, setJobs] = useState<VideoJobRow[]>(initialJobs)
 
-  const [prompt, setPrompt] = useState(
-    'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
-  )
+  // Fixed initial value (not random) so SSR and hydration render the same
+  const [prompt, setPrompt] = useState<string>(SAMPLE_PROMPTS[0])
   const [duration, setDuration] = useState(5)
   const [size, setSize] = useState<VideoSize>('16:9_480p')
   const [enhancePrompt, setEnhancePrompt] = useState(true)
@@ -244,6 +259,12 @@ function Home() {
     setWsState('idle')
   }
 
+  function shufflePrompt() {
+    const others = SAMPLE_PROMPTS.filter((p) => p !== prompt)
+    const next = others[Math.floor(Math.random() * others.length)]
+    if (next) setPrompt(next)
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-3xl px-6 py-12">
@@ -303,13 +324,23 @@ function Home() {
           className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 shadow-xl shadow-black/30"
         >
           <label className="block">
-            <span className="text-sm font-medium text-zinc-300">Prompt</span>
+            <span className="flex items-center justify-between">
+              <span className="text-sm font-medium text-zinc-300">Prompt</span>
+              <button
+                type="button"
+                onClick={shufflePrompt}
+                disabled={isStarting}
+                className="text-xs font-medium text-violet-400 transition hover:text-violet-300 disabled:opacity-50"
+              >
+                🎲 Shuffle prompt
+              </button>
+            </span>
             <textarea
               aria-label="Prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              disabled={isStarting || isRunning}
+              disabled={isStarting}
               className="mt-2 w-full resize-y rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none ring-violet-500/40 placeholder:text-zinc-600 focus:ring-2 disabled:opacity-60"
               placeholder="Describe the video you want…"
             />
@@ -326,7 +357,7 @@ function Home() {
                 max={15}
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                disabled={isStarting || isRunning}
+                disabled={isStarting}
                 className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 outline-none ring-violet-500/40 focus:ring-2 disabled:opacity-60"
               />
             </label>
@@ -336,7 +367,7 @@ function Home() {
               <select
                 value={size}
                 onChange={(e) => setSize(e.target.value as VideoSize)}
-                disabled={isStarting || isRunning}
+                disabled={isStarting}
                 className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 outline-none ring-violet-500/40 focus:ring-2 disabled:opacity-60"
               >
                 {SIZE_OPTIONS.map((opt) => (
@@ -354,7 +385,7 @@ function Home() {
               aria-label="Enhance prompt with Grok text before video gen"
               checked={enhancePrompt}
               onChange={(e) => setEnhancePrompt(e.target.checked)}
-              disabled={isStarting || isRunning}
+              disabled={isStarting}
               className="size-4 rounded border-zinc-600 bg-zinc-950 text-violet-500 focus:ring-violet-500"
             />
             <span className="text-sm text-zinc-300">
@@ -365,14 +396,10 @@ function Home() {
           <div className="flex flex-wrap gap-3 pt-1">
             <button
               type="submit"
-              disabled={!signedIn || isStarting || isRunning || !prompt.trim()}
+              disabled={!signedIn || isStarting || !prompt.trim()}
               className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isStarting
-                ? 'Starting workflow…'
-                : isRunning
-                  ? 'Generating…'
-                  : 'Generate video'}
+              {isStarting ? 'Starting workflow…' : 'Generate video'}
             </button>
             {(workflowId || error) && (
               <button
@@ -391,51 +418,49 @@ function Home() {
             <h2 className="text-sm font-medium text-zinc-300">Recent videos</h2>
             <ul className="mt-3 divide-y divide-zinc-800">
               {jobs.map((job) => (
-                <li
-                  key={job.id}
-                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-zinc-200">{job.prompt}</p>
-                    <p className="mt-0.5 font-mono text-xs text-zinc-600">
-                      {job.id}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs capitalize ${
-                        job.status === 'completed'
-                          ? 'bg-emerald-500/15 text-emerald-300'
-                          : job.status === 'failed'
-                            ? 'bg-red-500/15 text-red-300'
-                            : 'bg-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {job.status}
-                    </span>
-                    {job.videoUrl ? (
-                      <a
-                        href={job.videoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-violet-400 hover:text-violet-300"
+                <li key={job.id} className="py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-zinc-200">{job.prompt}</p>
+                      <p className="mt-0.5 font-mono text-xs text-zinc-600">
+                        {job.id}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs capitalize ${
+                          job.status === 'completed'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : job.status === 'failed'
+                              ? 'bg-red-500/15 text-red-300'
+                              : 'bg-zinc-800 text-zinc-400'
+                        }`}
                       >
-                        Open
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-xs text-zinc-400 hover:text-zinc-200"
-                        onClick={() => {
-                          setWorkflowId(job.id)
-                          setStatus(null)
-                          setError(null)
-                        }}
-                      >
-                        Watch
-                      </button>
-                    )}
+                        {job.status}
+                      </span>
+                      {!job.videoUrl && job.status === 'running' && (
+                        <button
+                          type="button"
+                          className="text-xs text-zinc-400 hover:text-zinc-200"
+                          onClick={() => {
+                            setWorkflowId(job.id)
+                            setStatus(null)
+                            setError(null)
+                          }}
+                        >
+                          Watch
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {job.videoUrl && (
+                    <video
+                      src={job.videoUrl}
+                      controls
+                      preload="metadata"
+                      className="mt-2 aspect-video w-full rounded-xl border border-zinc-800 bg-black"
+                    />
+                  )}
                 </li>
               ))}
             </ul>
