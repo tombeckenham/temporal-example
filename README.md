@@ -91,10 +91,10 @@ Edge and Fly deploys run in parallel after migrate. Manual re-run: Actions → *
 
 ### Secrets
 
-| Where | What |
-| --- | --- |
-| **GitHub Actions** | Only `DOPPLER_TOKEN` (service token for `video-at-scale` / `prd`) |
-| **Doppler `prd`** | App runtime **and** deploy creds: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FLY_API_TOKEN`, plus DB/auth/Temporal/xAI/webhooks |
+| Where              | What                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **GitHub Actions** | Only `DOPPLER_TOKEN` (service token for `video-at-scale` / `prd`)                                                                      |
+| **Doppler `prd`**  | App runtime **and** deploy creds: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FLY_API_TOKEN`, plus DB/auth/Temporal/xAI/webhooks |
 
 CI uses `doppler run --project video-at-scale --config prd -- …` for migrate and both deploys.
 
@@ -113,7 +113,6 @@ Manual sync (local, with Doppler auth):
 doppler run --project video-at-scale --config prd -- bun run secrets:sync-edge
 doppler run --project video-at-scale --config prd -- bun run secrets:sync-fly
 ```
-
 
 ### Manual / first-time
 

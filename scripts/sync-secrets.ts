@@ -64,13 +64,10 @@ function payload(keys: readonly SecretKey[]): Record<string, string> {
   return out
 }
 
-function run(
-  cmd: string,
-  args: string[],
-  opts: { input?: string } = {},
-): void {
+function run(cmd: string, args: string[], opts: { input?: string } = {}): void {
   const result = spawnSync(cmd, args, {
-    stdio: opts.input !== undefined ? ['pipe', 'inherit', 'inherit'] : 'inherit',
+    stdio:
+      opts.input !== undefined ? ['pipe', 'inherit', 'inherit'] : 'inherit',
     input: opts.input,
     env: process.env,
     encoding: 'utf8',
