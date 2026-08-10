@@ -15,6 +15,7 @@ import {
   handleJobStatusHttp,
   handleJobWebSocket,
 } from './lib/jobEvents.ts'
+import { reconcileStuckJobs } from './lib/jobReconcile.ts'
 import { handleVideoGet, handleVideoPersist } from './lib/videos.ts'
 
 export { JobRoom }
@@ -118,5 +119,16 @@ export default {
     // Every getDb() / getAuth() below this point shares one instance, and that
     // instance dies with the request — Workers rejects I/O created by another.
     return runInRequestScope(() => handleRequest(request))
+  },
+
+  // Cron (wrangler.jsonc triggers): heal jobs stuck at 'running' whose
+  // workflow finished, died, or never existed — the terminal webhook is
+  // best-effort, so Postgres/JobRoom need a truth pass against Temporal.
+  scheduled(
+    _controller: ScheduledController,
+    _env: Cloudflare.Env,
+    ctx: ExecutionContext,
+  ): void {
+    ctx.waitUntil(runInRequestScope(() => reconcileStuckJobs()))
   },
 }

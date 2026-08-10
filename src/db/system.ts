@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, asc, eq, lt } from 'drizzle-orm'
 import { getDb } from './index.ts'
 import { videoJob } from './schema.ts'
 
@@ -31,4 +31,22 @@ export async function updateVideoJobStatus(input: {
     .update(videoJob)
     .set(patch)
     .where(eq(videoJob.id, input.workflowId))
+}
+
+/**
+ * Running rows that have not been touched since `olderThan` — candidates for
+ * reconciliation against Temporal (cron path, no session).
+ */
+export async function listStaleRunningJobs(
+  olderThan: Date,
+  limit: number,
+): Promise<Array<{ id: string; prompt: string }>> {
+  return getDb()
+    .select({ id: videoJob.id, prompt: videoJob.prompt })
+    .from(videoJob)
+    .where(
+      and(eq(videoJob.status, 'running'), lt(videoJob.updatedAt, olderThan)),
+    )
+    .orderBy(asc(videoJob.updatedAt))
+    .limit(limit)
 }
