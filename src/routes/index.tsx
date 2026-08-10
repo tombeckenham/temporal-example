@@ -70,7 +70,11 @@ function Home() {
   const [size, setSize] = useState<VideoSize>('16:9_480p')
   const [enhancePrompt, setEnhancePrompt] = useState(true)
 
-  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  // Auto-resume: a refresh mid-generation reattaches to the newest running
+  // job — JobRoom pushes its last status snapshot on WebSocket connect.
+  const [workflowId, setWorkflowId] = useState<string | null>(
+    () => initialJobs.find((job) => job.status === 'running')?.id ?? null,
+  )
   const [status, setStatus] = useState<VideoWorkflowStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)

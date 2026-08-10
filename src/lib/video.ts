@@ -1,4 +1,4 @@
-import { createServerFn } from '@tanstack/react-start'
+import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { newId } from '../lib/id.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
@@ -18,16 +18,18 @@ const workflowIdSchema = z.object({
   workflowId: z.string().min(1, 'workflowId is required'),
 })
 
-function starterBaseUrl(): string {
+const starterBaseUrl = createServerOnlyFn(() => {
   const env = getEnv()
-  return (
-    env['TEMPORAL_STARTER_URL'] ??
-    env['TEMPORAL_GATEWAY_URL'] ??
-    'http://127.0.0.1:8788'
-  )
-}
+  const url = env.TEMPORAL_STARTER_URL
+  if (!url) {
+    throw new Error(
+      'TEMPORAL_STARTER_URL is required (shared secret for edge → Temporal gateway)',
+    )
+  }
+  return url.replace(/\/$/, '')
+})
 
-function starterSecret(): string {
+const starterSecret = createServerOnlyFn(() => {
   const secret = getEnv()['TEMPORAL_STARTER_SECRET']
   if (!secret) {
     throw new Error(
@@ -35,22 +37,21 @@ function starterSecret(): string {
     )
   }
   return secret
-}
+})
 
-async function starterFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const base = starterBaseUrl().replace(/\/$/, '')
-  return fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${starterSecret()}`,
-      'content-type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  })
-}
+const starterFetch = createServerOnlyFn(
+  async (path: string, init?: RequestInit): Promise<Response> => {
+    const base = starterBaseUrl()
+    return fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${starterSecret()}`,
+        'content-type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    })
+  },
+)
 
 /**
  * Start a video workflow via the Node Temporal gateway.

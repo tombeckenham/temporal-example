@@ -31,7 +31,6 @@ const WORKFLOW_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i
 
 type JobRouteHandler = (
   request: Request,
-  env: Cloudflare.Env,
   workflowId: string,
 ) => Promise<Response>
 
@@ -40,6 +39,7 @@ type JobRouteHandler = (
  * guards every entry uniformly: the param must be a ULID and the session
  * user must own the video_job row (authorizeJobAccess). Add new job routes
  * here — never as ad-hoc branches that could skip the guard.
+ * Handlers read bindings via getEnv() (lib/env.ts), not a threaded env param.
  */
 const jobRoutes: Array<{
   method: string
@@ -49,20 +49,18 @@ const jobRoutes: Array<{
   {
     method: 'GET',
     prefix: '/api/videos/',
-    handler: (_request, env, workflowId) => handleVideoGet(env, workflowId),
+    handler: (_request, workflowId) => handleVideoGet(workflowId),
   },
   {
     // WebSocket upgrades arrive as GET
     method: 'GET',
     prefix: '/ws/jobs/',
-    handler: (request, env, workflowId) =>
-      handleJobWebSocket(request, env, workflowId),
+    handler: handleJobWebSocket,
   },
   {
     method: 'GET',
     prefix: '/api/jobs/',
-    handler: (_request, env, workflowId) =>
-      handleJobStatusHttp(env, workflowId),
+    handler: (_request, workflowId) => handleJobStatusHttp(workflowId),
   },
 ]
 
@@ -73,7 +71,7 @@ const jobRoutes: Array<{
  */
 const internalRoutes: Array<{
   path: string
-  handler: (request: Request, env: Cloudflare.Env) => Promise<Response>
+  handler: (request: Request) => Promise<Response>
 }> = [
   { path: '/internal/job-events', handler: handleJobEvents },
   { path: '/internal/videos', handler: handleVideoPersist },
@@ -82,19 +80,16 @@ const internalRoutes: Array<{
 /**
  * Vars and secrets reach server code through process.env (populated by
  * `nodejs_compat`) and object bindings through `cloudflare:workers` — see
- * lib/cfEnv.ts. Nothing is copied into module scope here: state set during
- * one request is shared with every other request in the isolate.
+ * lib/env.ts (getEnv). Nothing is copied into module scope here: state set
+ * during one request is shared with every other request in the isolate.
  */
-async function handleRequest(
-  request: Request,
-  env: Cloudflare.Env,
-): Promise<Response> {
+async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
 
   if (request.method === 'POST') {
     for (const route of internalRoutes) {
       if (url.pathname === route.path) {
-        return route.handler(request, env)
+        return route.handler(request)
       }
     }
   }
@@ -108,7 +103,7 @@ async function handleRequest(
     }
     const denied = await authorizeJobAccess(request, workflowId)
     if (denied) return denied
-    return route.handler(request, env, workflowId)
+    return route.handler(request, workflowId)
   }
 
   return handler.fetch(request)
@@ -117,11 +112,11 @@ async function handleRequest(
 export default {
   fetch(
     request: Request,
-    env: Cloudflare.Env,
+    _env: Cloudflare.Env,
     _ctx: ExecutionContext,
   ): Promise<Response> {
     // Every getDb() / getAuth() below this point shares one instance, and that
     // instance dies with the request — Workers rejects I/O created by another.
-    return runInRequestScope(() => handleRequest(request, env))
+    return runInRequestScope(() => handleRequest(request))
   },
 }
