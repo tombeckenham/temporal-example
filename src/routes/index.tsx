@@ -30,6 +30,9 @@ export const Route = createFileRoute('/')({
   },
 })
 
+/** Grok Imagine accepts integer durations 1–15s (GROK_VIDEO_MIN/MAX_DURATION) */
+const DURATION_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1)
+
 const SIZE_OPTIONS = [
   { value: '16:9_480p', label: '16:9 · 480p (fast)' },
   { value: '16:9_720p', label: '16:9 · 720p' },
@@ -301,17 +304,20 @@ function Home() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium text-zinc-300">
-                Duration (seconds)
+                Duration
               </span>
-              <input
-                type="number"
-                min={1}
-                max={15}
+              <select
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
                 disabled={isStarting}
                 className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 outline-none ring-violet-500/40 focus:ring-2 disabled:opacity-60"
-              />
+              >
+                {DURATION_OPTIONS.map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds} {seconds === 1 ? 'second' : 'seconds'}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="block">
