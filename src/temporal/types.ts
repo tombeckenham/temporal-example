@@ -1,7 +1,11 @@
 /** Shared types for the video generation workflow (safe for workflow sandbox). */
 
 export type VideoPhase =
-  'enhancing' | 'starting' | 'generating' | 'completed' | 'failed'
+  | 'enhancing'
+  | 'starting'
+  | 'generating'
+  | 'completed'
+  | 'failed'
 
 export type VideoJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 

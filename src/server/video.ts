@@ -46,7 +46,7 @@ async function starterFetch(
     headers: {
       authorization: `Bearer ${starterSecret()}`,
       'content-type': 'application/json',
-      ...(init?.headers ?? {}),
+      ...init?.headers,
     },
   })
 }

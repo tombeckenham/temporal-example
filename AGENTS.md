@@ -46,7 +46,8 @@ bun run cf-typegen                # regenerate Worker Env types
 bun run test:e2e
 ```
 
-Typecheck: `bun run typecheck` (`tsc --noEmit`).
+Typecheck: `bun run typecheck` (TypeScript 7 native `tsc --noEmit`).
+Lint/format: `bun run lint` (oxlint), `bun run format` / `bun run check` (oxfmt).
 
 E2E uses `@copilotkit/aimock` to mock Grok chat + Imagine video. Activities honor
 `XAI_BASE_URL` so the worker talks to AIMock instead of `api.x.ai`.
@@ -167,7 +168,8 @@ Prefer Grok / xAI for AI features in this repo (see build-with-ai skill).
 - Frontend: inline skeleton/loading UI in the component (no separate skeleton files)
 - Don't add large test suites for demos; cover critical paths only if needed
 - Check if localhost is already running before starting `bun dev`
-- Typecheck: `bun run typecheck` (or `bun tsgo --noEmit` if available)
+- Typecheck: `bun run typecheck` (TypeScript 7 native compiler via `tsc --noEmit`)
+- Lint/format: oxlint + oxfmt (not ESLint/Prettier)
 
 ## Common pitfalls
 

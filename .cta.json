@@ -17,5 +17,5 @@
   "routerOnly": false,
   "version": 1,
   "framework": "react",
-  "chosenAddOns": ["eslint", "nitro", "drizzle"]
+  "chosenAddOns": ["oxlint", "nitro", "drizzle"]
 }
