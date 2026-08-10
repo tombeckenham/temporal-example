@@ -2,9 +2,20 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 
+import { getSessionFn } from '../lib/session.ts'
+import type { PublicSession } from '../lib/session.ts'
 import appCss from '../styles.css?url'
 
+export type RouterContext = {
+  session: PublicSession
+}
+
 export const Route = createRootRoute({
+  // Re-runs on every navigation (incl. after login) so the UI sees the cookie.
+  beforeLoad: async (): Promise<RouterContext> => {
+    const session = await getSessionFn()
+    return { session }
+  },
   head: () => ({
     meta: [
       {

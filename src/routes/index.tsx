@@ -1,10 +1,8 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { authClient } from '../auth/client.ts'
 import { listMyJobsFn } from '../lib/jobs.ts'
 import type { VideoJobRow } from '../lib/jobs.ts'
-import { getSessionFn } from '../lib/session.ts'
-import type { PublicSession } from '../lib/session.ts'
 import { startVideoWorkflowFn } from '../lib/video.ts'
 import type {
   GenerateVideoInput,
@@ -14,17 +12,17 @@ import type {
 
 export const Route = createFileRoute('/')({
   component: Home,
-  loader: async () => {
-    const session = await getSessionFn()
+  // Session comes from root beforeLoad (context). Jobs depend on it.
+  loader: async ({ context }) => {
     let jobs: VideoJobRow[] = []
-    if (session?.user) {
+    if (context.session?.user) {
       try {
         jobs = await listMyJobsFn({ data: { limit: 12 } })
       } catch {
         jobs = []
       }
     }
-    return { session, jobs }
+    return { jobs }
   },
 })
 
@@ -68,9 +66,11 @@ function jobWebSocketUrl(workflowId: string): string {
 }
 
 function Home() {
-  const { session: initialSession, jobs: initialJobs } = Route.useLoaderData()
-  const [session, setSession] = useState<PublicSession>(initialSession)
-  const [jobs, setJobs] = useState<VideoJobRow[]>(initialJobs)
+  const router = useRouter()
+  // Auth state from root beforeLoad — always fresh after navigate / invalidate
+  const { session } = Route.useRouteContext()
+  const { jobs: loadedJobs } = Route.useLoaderData()
+  const [jobs, setJobs] = useState<VideoJobRow[]>(loadedJobs)
   /** Jobs started this session — shown immediately, before the DB list catches up */
   const [localJobs, setLocalJobs] = useState<VideoJobRow[]>([])
   /** Latest pushed status per running job (JobRoom WebSocket) */
@@ -88,6 +88,15 @@ function Home() {
   const [isStarting, setIsStarting] = useState(false)
 
   const signedIn = !!session?.user
+
+  // Keep list in sync when loader re-runs (login / logout / invalidate)
+  useEffect(() => {
+    setJobs(loadedJobs)
+    if (!signedIn) {
+      setLocalJobs([])
+      setLiveStatuses({})
+    }
+  }, [loadedJobs, signedIn])
 
   const refreshJobs = useCallback(async () => {
     if (!session?.user) return
@@ -209,7 +218,8 @@ function Home() {
 
   async function signOut() {
     await authClient.signOut()
-    setSession(null)
+    // Re-run root beforeLoad so context.session becomes null
+    await router.invalidate()
   }
 
   function shufflePrompt() {

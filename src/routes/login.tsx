@@ -1,13 +1,38 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  redirect,
+  useNavigate,
+  useRouter,
+} from '@tanstack/react-router'
 import { useState } from 'react'
 import { authClient } from '../auth/client.ts'
 
+function sanitizeRedirect(url: unknown): string {
+  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) {
+    return '/'
+  }
+  return url
+}
+
 export const Route = createFileRoute('/login')({
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    if (search['redirect'] === undefined) return {}
+    return { redirect: sanitizeRedirect(search['redirect']) }
+  },
+  // Already signed in? Don't show the form.
+  beforeLoad: ({ context, search }) => {
+    if (context.session?.user) {
+      throw redirect({ href: sanitizeRedirect(search.redirect) })
+    }
+  },
   component: LoginPage,
 })
 
 function LoginPage() {
   const navigate = useNavigate()
+  const router = useRouter()
+  const search = Route.useSearch()
+  const redirectTo = sanitizeRedirect(search.redirect)
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
   const [step, setStep] = useState<'email' | 'otp'>('email')
@@ -52,7 +77,9 @@ function LoginPage() {
         setError(err.message ?? 'Invalid code')
         return
       }
-      await navigate({ to: '/' })
+      // Cookie is set — re-run root beforeLoad so session is on route context
+      await router.invalidate()
+      await navigate({ to: redirectTo })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
