@@ -89,21 +89,21 @@ Production deploys run from **GitHub Actions on `main`** (after checks + DB migr
 
 Edge and Fly deploys run in parallel after migrate. Manual re-run: Actions → **ci** → **Run workflow** (must be on `main`).
 
-### Required GitHub Actions secrets
+### Secrets
 
-| Secret | Used by |
+| Where | What |
 | --- | --- |
-| `DOPPLER_TOKEN` | migrate (existing) |
-| `CLOUDFLARE_API_TOKEN` | edge deploy (Workers edit) |
-| `CLOUDFLARE_ACCOUNT_ID` | edge deploy |
-| `FLY_API_TOKEN` | worker deploy (`fly tokens create deploy -a video-at-scale-worker`) |
+| **GitHub Actions** | Only `DOPPLER_TOKEN` (service token for `video-at-scale` / `prd`) |
+| **Doppler `prd`** | App runtime **and** deploy creds: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FLY_API_TOKEN`, plus DB/auth/Temporal/xAI/webhooks |
+
+CI uses `doppler run --project video-at-scale --config prd -- …` for migrate and both deploys.
 
 Jobs use the **`production`** GitHub Environment (optional protection rules / reviewers).
 
-Runtime secrets (API keys, webhook secrets, etc.) stay on the platforms — **not** re-set every deploy:
+Runtime secrets still need to be projected onto the platforms (Workers/Fly cannot call Doppler at request time):
 
-- Edge: `wrangler secret put …`
-- Fly: `fly secrets set …`
+- Edge: `wrangler secret put …` (or bulk sync from Doppler)
+- Fly: `fly secrets set …` / `fly secrets import`
 
 ### Manual / first-time
 
