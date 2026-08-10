@@ -3,7 +3,8 @@
  * Column names snake_case; drizzleAdapter maps camelCase fields by default.
  * All primary keys are ULIDs (text) via `newId()` / Better Auth `advanced.generateId`.
  */
-import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { boolean, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -56,18 +57,28 @@ export const verification = pgTable('verification', {
 })
 
 /** Tracks which user owns a video workflow (for listing / authz). */
-export const videoJob = pgTable('video_job', {
-  id: text('id').primaryKey(), // ULID = Temporal workflowId
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  prompt: text('prompt').notNull(),
-  status: text('status').notNull().default('running'),
-  r2Key: text('r2_key'),
-  videoUrl: text('video_url'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+export const videoJob = pgTable(
+  'video_job',
+  {
+    id: text('id').primaryKey(), // ULID = Temporal workflowId
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    prompt: text('prompt').notNull(),
+    status: text('status').notNull().default('running'),
+    r2Key: text('r2_key'),
+    videoUrl: text('video_url'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    // Reconciler scans running rows by staleness — keep it O(running rows),
+    // not O(all jobs ever)
+    index('video_job_running_updated_idx')
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'running'`),
+  ],
+)
 
 export const authSchema = {
   user,

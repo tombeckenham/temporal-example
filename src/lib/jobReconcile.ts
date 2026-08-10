@@ -1,4 +1,8 @@
-import { listStaleRunningJobs, updateVideoJobStatus } from '../db/system.ts'
+import {
+  listStaleRunningJobs,
+  touchRunningVideoJob,
+  updateVideoJobStatus,
+} from '../db/system.ts'
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { getEnv } from './env.ts'
 
@@ -12,10 +16,17 @@ import { getEnv } from './env.ts'
  * gateway for the truth and syncs Postgres + JobRoom to it.
  */
 
-/** Leave fresh rows alone — they are legitimately mid-flight. */
+/**
+ * Rows are "stale" after this long without a status webhook — every
+ * non-terminal webhook bumps updated_at (see handleJobEvents), so this is
+ * silence, not age. Confirmed-RUNNING rows are re-touched below, so each
+ * healthy job is checked at most once per silence window.
+ */
 const STALE_AFTER_MS = 5 * 60_000
-/** Rows healed per run; the cron fires every 5 minutes, backlog drains fast. */
-const BATCH_LIMIT = 25
+/** Rows fetched per run — a mass-wedge event drains in a few ticks. */
+const BATCH_LIMIT = 500
+/** Stop before the next cron tick fires (runs every 5 minutes). */
+const TIME_BUDGET_MS = 4 * 60_000
 
 interface GatewayStatus {
   workflowId: string
@@ -41,7 +52,12 @@ export async function reconcileStuckJobs(): Promise<void> {
   if (stale.length === 0) return
 
   console.log(`[reconcile] checking ${stale.length} stale running job(s)`)
+  const deadline = Date.now() + TIME_BUDGET_MS
   for (const row of stale) {
+    if (Date.now() >= deadline) {
+      console.warn('[reconcile] time budget exhausted — resuming next tick')
+      return
+    }
     await reconcileJob(base, secret, row)
   }
 }
@@ -84,7 +100,12 @@ async function reconcileJob(
   }
 
   const body = await res.json<GatewayStatus>()
-  if (body.executionStatus === 'RUNNING') return
+  if (body.executionStatus === 'RUNNING') {
+    // Verified alive: the check itself is a liveness signal, so the row
+    // leaves the stale set until the next silence window
+    await touchRunningVideoJob(row.id)
+    return
+  }
 
   // Workflow is closed. Trust its final projected status; a close without a
   // terminal phase (terminated, timed out) counts as failed.

@@ -34,6 +34,18 @@ export async function updateVideoJobStatus(input: {
 }
 
 /**
+ * Liveness signal: bump updated_at on a running row when any status webhook
+ * arrives, so "stale" means "no signal for N minutes" — not "started N
+ * minutes ago". Keeps the reconciler's candidate set O(actually suspicious).
+ */
+export async function touchRunningVideoJob(workflowId: string): Promise<void> {
+  await getDb()
+    .update(videoJob)
+    .set({ updatedAt: new Date() })
+    .where(and(eq(videoJob.id, workflowId), eq(videoJob.status, 'running')))
+}
+
+/**
  * Running rows that have not been touched since `olderThan` — candidates for
  * reconciliation against Temporal (cron path, no session).
  */
