@@ -80,10 +80,19 @@ async function run() {
 
   const connection = await connectWithRetry(address)
 
+  // Global activity throughput cap, enforced by the Temporal SERVER across
+  // every worker on this queue. xAI's imagine-video endpoints are capped at
+  // 10 RPS regardless of tier; 8 leaves headroom for retries. Excess work
+  // queues durably — jobs slow down, nothing is dropped.
+  const activitiesPerSecond = Number(
+    process.env['TEMPORAL_ACTIVITIES_PER_SECOND'] ?? 8,
+  )
+
   const worker = await Worker.create({
     connection,
     namespace,
     taskQueue: TASK_QUEUE,
+    maxTaskQueueActivitiesPerSecond: activitiesPerSecond,
     workflowsPath: fileURLToPath(
       new URL('./workflows/index.ts', import.meta.url),
     ),
