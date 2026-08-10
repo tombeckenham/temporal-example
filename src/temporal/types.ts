@@ -51,3 +51,9 @@ export interface GenerateVideoResult {
 }
 
 export const TASK_QUEUE = 'video-generation'
+
+/**
+ * Dedicated queue for activities that call xAI (enhance, submit, poll), so
+ * the xAI-protecting rate cap doesn't throttle webhooks and persists.
+ */
+export const XAI_TASK_QUEUE = 'xai-api'
