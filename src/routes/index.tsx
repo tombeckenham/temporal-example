@@ -45,20 +45,20 @@ const SIZE_OPTIONS = [
   { value: '1:1_480p', label: '1:1 · 480p' },
 ] as const
 
-/** Varied starter prompts for the shuffle button — silly, cinematic, and different video styles */
+/** Starter prompts for the shuffle button — surreal, stylish, and strange */
 const SAMPLE_PROMPTS = [
-  'A glowing crystal-powered rocket launching from the red dunes of Mars at golden hour',
-  'A corgi in a tiny astronaut suit floating through a space station, chasing a slice of pizza in zero gravity',
-  'A capybara barista carefully pouring latte art in a cozy Tokyo café, soft morning light through the window',
-  'Claymation stop-motion: a grumpy wizard burns his toast and accidentally sets his beard on fire',
-  'Macro timelapse of bioluminescent mushrooms sprouting on a mossy log, glowing spores drifting in the dark',
-  'A penguin strutting down a fashion runway in a tiny tuxedo while paparazzi flashbulbs pop',
-  'Grainy 80s VHS footage of a robot learning to skateboard in an empty mall parking lot',
-  'Drone dive off a snowy mountain ridge, chasing a wingsuit flyer through a narrow canyon at sunrise',
-  'A tiny dragon hatching from an egg on a library bookshelf, knocking over ink pots by candlelight',
-  'Film noir: a raccoon detective in a trench coat inspects a tipped-over trash can in the pouring rain',
-  'Anime style: a ramen delivery scooter weaving at high speed through neon-lit streets in the rain',
-  'Slow-motion rooftop water balloon fight between office workers in full business suits at golden hour',
+  'An astronaut opens a weathered door standing alone in the desert and steps through into a rolling ocean',
+  'A jellyfish of liquid chrome drifting down a cathedral nave, stained glass light rippling across its skin',
+  'A masked figure in a red silk suit walking calmly through a burning ballroom, embers swirling like snow',
+  'Giant koi swimming through low fog between brutalist apartment towers at dusk',
+  'Slow orbit around a samurai standing on a moving train roof, cherry blossoms frozen mid-air around him',
+  'An empty swimming pool at night slowly filling with stars instead of water',
+  'Macro shot of a moth with circuit-board wings landing on a neon sign, sparks dripping like honey',
+  'Time-reversed demolition: a collapsed skyscraper reassembles itself out of a scattering flock of birds',
+  'A 1970s mirror ball the size of a house descending into a misty canyon, lasers raking the rock walls',
+  'Glitching security-cam footage of a ghost slow-dancing alone in a laundromat at 3am',
+  'A chess game between two thunderstorms over a wheat field, lightning bolts moving the pieces',
+  'A vinyl record melting into a black ocean at sunset, the horizon bending like a fisheye lens',
 ] as const
 
 type WsMessage =
