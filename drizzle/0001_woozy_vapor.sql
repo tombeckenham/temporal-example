@@ -1,0 +1,1 @@
+CREATE INDEX "video_job_running_updated_idx" ON "video_job" USING btree ("updated_at") WHERE "video_job"."status" = 'running';

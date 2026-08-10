@@ -1,7 +1,7 @@
 import type { VideoWorkflowStatus } from '../temporal/types.ts'
 import { getEnv } from './env.ts'
 import { verifyBodySignature } from './internalAuth.ts'
-import { syncVideoJobFromStatus } from './jobSync.ts'
+import { syncVideoJobFromStatus, touchVideoJob } from './jobSync.ts'
 
 export interface JobEventBody {
   workflowId: string
@@ -60,7 +60,9 @@ export async function handleJobEvents(request: Request): Promise<Response> {
     updatedAt: parsed.updatedAt,
   })
 
-  // Keep Postgres job index in sync for "my videos" listing (not the live UX path)
+  // Keep Postgres job index in sync for "my videos" listing (not the live UX
+  // path). Non-terminal webhooks bump updated_at as a liveness signal so the
+  // reconciliation cron only chases rows that have gone quiet.
   const phase = parsed.status.phase
   if (phase === 'completed' || phase === 'failed') {
     const sync: {
@@ -73,6 +75,8 @@ export async function handleJobEvents(request: Request): Promise<Response> {
     }
     if (parsed.status.videoUrl) sync.videoUrl = parsed.status.videoUrl
     await syncVideoJobFromStatus(sync)
+  } else {
+    await touchVideoJob(parsed.workflowId)
   }
 
   return Response.json(result)

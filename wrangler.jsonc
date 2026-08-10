@@ -7,6 +7,10 @@
   "observability": {
     "enabled": true,
   },
+  // Reconcile video_job rows stuck at 'running' (see src/lib/jobReconcile.ts)
+  "triggers": {
+    "crons": ["*/5 * * * *"],
+  },
   "durable_objects": {
     "bindings": [
       {

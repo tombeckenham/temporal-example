@@ -1,4 +1,4 @@
-import { updateVideoJobStatus } from '../db/system.ts'
+import { touchRunningVideoJob, updateVideoJobStatus } from '../db/system.ts'
 import { getEnv } from './env.ts'
 
 /**
@@ -22,5 +22,19 @@ export async function syncVideoJobFromStatus(input: {
     await updateVideoJobStatus(input)
   } catch (err) {
     console.error('[syncVideoJobFromStatus]', input.workflowId, err)
+  }
+}
+
+/**
+ * Best-effort liveness touch for non-terminal webhooks — same contract as
+ * syncVideoJobFromStatus: never throws into the webhook path.
+ */
+export async function touchVideoJob(workflowId: string): Promise<void> {
+  if (!getEnv()['DATABASE_URL']) return
+
+  try {
+    await touchRunningVideoJob(workflowId)
+  } catch (err) {
+    console.error('[touchVideoJob]', workflowId, err)
   }
 }
