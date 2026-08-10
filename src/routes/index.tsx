@@ -40,20 +40,20 @@ const SIZE_OPTIONS = [
   { value: '1:1_480p', label: '1:1 · 480p' },
 ] as const
 
-/** Starter prompts for the shuffle button — surreal, stylish, and strange */
+/** Starter prompts for the shuffle button — striking characters, surreal settings */
 const SAMPLE_PROMPTS = [
-  'An astronaut opens a weathered door standing alone in the desert and steps through into a rolling ocean',
-  'A jellyfish of liquid chrome drifting down a cathedral nave, stained glass light rippling across its skin',
+  'A woman in a mirrored evening gown crossing a salt flat at dusk, her reflection walking one step behind her',
   'A masked figure in a red silk suit walking calmly through a burning ballroom, embers swirling like snow',
-  'Giant koi swimming through low fog between brutalist apartment towers at dusk',
+  'A tango dancer spinning through a smoke-filled Buenos Aires bar, her dress trailing sparks with every turn',
   'Slow orbit around a samurai standing on a moving train roof, cherry blossoms frozen mid-air around him',
-  'An empty swimming pool at night slowly filling with stars instead of water',
-  'Macro shot of a moth with circuit-board wings landing on a neon sign, sparks dripping like honey',
-  'Time-reversed demolition: a collapsed skyscraper reassembles itself out of a scattering flock of birds',
-  'A 1970s mirror ball the size of a house descending into a misty canyon, lasers raking the rock walls',
-  'Glitching security-cam footage of a ghost slow-dancing alone in a laundromat at 3am',
-  'A chess game between two thunderstorms over a wheat field, lightning bolts moving the pieces',
-  'A vinyl record melting into a black ocean at sunset, the horizon bending like a fisheye lens',
+  'A jazz singer in a sequined dress on a rooftop stage, the city lights drifting toward her like moths',
+  'A matador in a glittering suit of lights facing down an oncoming sandstorm instead of a bull',
+  'A biker in chrome leathers stopped on a desert highway, the aurora borealis reflected in her visor',
+  'A ballerina rehearsing alone in a flooded theater, each pirouette sending rings across the mirror-still water',
+  'A couple slow-dancing on the wing of a parked 747 at golden hour, wind tugging at her scarf',
+  'A street magician in a velvet coat levitating a storm of playing cards around a stunned crowd in a neon alley',
+  'An astronaut opens a weathered door standing alone in the desert and steps through into a rolling ocean',
+  'A detective in a rain-soaked trench coat under a flickering streetlamp, every raindrop freezing as she looks up',
 ] as const
 
 type WsMessage =
